@@ -1,0 +1,6 @@
+some
+test
+text
+to
+test
+lab0.c
