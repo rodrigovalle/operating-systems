@@ -7,14 +7,22 @@
 #include <getopt.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 
-void blow_chunks()
+// BUG(?): when --output and --input refer to the same file, it deletes all
+// contents of that file
+// Should the program segfault before or after writing to files?
+// What should open/creat errors look like with printf and perror?
+
+void
+blow_chunks()
 {
 	char* wrong = NULL;
 	*wrong = 0;
 }
 
-void replace_fd(int old_fd, int new_fd)
+void
+replace_fd(int old_fd, int new_fd)
 {
 	if(new_fd >= 0) {
 		close(old_fd);
@@ -23,18 +31,27 @@ void replace_fd(int old_fd, int new_fd)
 	}
 }
 
-int main(int argc, char *argv[])
+void
+sigseg_handler(int signum)
+{
+	fprintf(stderr, "error: segfault caught, exiting");
+	exit(3);
+}
+
+int
+main(int argc, char *argv[])
 {
 	int o;
 	int new_fd;
 	int mode;
 	int opt_index = 0;
-	static struct option long_opts[] =
+	int segflag = 0;
+	struct option long_opts[] =
 	{
-		{"input",    required_argument, 0, 'i'},
-		{"output",   required_argument, 0, 'o'},
-		{"segfault", no_argument,       0, 's'},
-		{"catch",    no_argument,       0, 'c'},
+		{"input",    required_argument, 0,        'i'},
+		{"output",   required_argument, 0,        'o'},
+		{"segfault", no_argument,       &segflag,  1 },
+		{"catch",    no_argument,       0,        'c'},
 		{0, 0, 0, 0}
 	};
 
@@ -42,19 +59,22 @@ int main(int argc, char *argv[])
 	{
 		switch (o) {
 			case 'i':
-				new_fd = open(optarg, O_RDONLY);
+				if ((new_fd = open(optarg, O_RDONLY)) == -1) {
+					perror("open");
+					exit(1);
+				}
 				replace_fd(STDIN_FILENO, new_fd);
 				break;
 			case 'o':
 				mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
-				new_fd = creat(optarg, mode);
+				if ((new_fd = creat(optarg, mode)) == -1) {
+					perror("creat");
+					exit(2);
+				}
 				replace_fd(STDOUT_FILENO, new_fd);
 				break;
-			case 's':
-				// force a segfault
-				blow_chunks();
-				break;
 			case 'c':
+				signal(SIGSEGV, sigseg_handler);
 				break;
 			case '?':
 				break;
@@ -63,10 +83,20 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	char* c;
-	while (read(STDIN_FILENO, c, 1) > 0)
+	if (segflag) {
+		blow_chunks(); // force a segfault
+	}
+
+	int stat;
+	char c = 0;
+	while ((stat = read(STDIN_FILENO, &c, 1)) > 0)
 	{
-		write(STDOUT_FILENO, c, 1);
+		if(write(STDOUT_FILENO, &c, 1) == -1) {
+			perror("write");
+		}
+	}
+	if (stat < 0) {
+		perror("read");
 	}
 
 	close(STDIN_FILENO);
