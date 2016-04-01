@@ -11,8 +11,9 @@
 
 // BUG(?): when --output and --input refer to the same file, it deletes all
 // contents of that file
-// Should the program segfault before or after writing to files?
 // What should open/creat errors look like with printf and perror?
+// What if a flag is passed without its argument?
+// - fprintf smoething to stderr
 
 void
 blow_chunks()
@@ -38,6 +39,12 @@ sigseg_handler(int signum)
 	exit(3);
 }
 
+void
+print_usage(char *argv0)
+{
+	printf("Usage: %s [--input=FILE] [--output=FILE] [--segfault] [--catch]", argv0);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -55,7 +62,7 @@ main(int argc, char *argv[])
 		{0, 0, 0, 0}
 	};
 
-	while ((o = getopt_long(argc, argv, "i:o", long_opts, &opt_index)) != -1)
+	while ((o = getopt_long(argc, argv, "", long_opts, &opt_index)) != -1)
 	{
 		switch (o) {
 			case 'i':

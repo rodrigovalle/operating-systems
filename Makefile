@@ -14,11 +14,11 @@ check: default
 	diff out.txt test.txt
 	# test --input on files that don't exist
 	rm -f doesntexist.txt
-	!(./lab0 --input=doesntexist.txt)
+	[[ !$$(./lab0 --input=doesntexist.txt) ]]
 	# test --output on unopenable file
 	touch canttouchthis.txt
 	chmod -rwx canttouchthis.txt
-	!(./lab0 --output=canttouchthis.txt)
+	[[ !$$(./lab0 --output=canttouchthis.txt) ]]
 	# check --input individually
 	./lab0 --input=test.txt | diff - test.txt
 	# check --output individually
