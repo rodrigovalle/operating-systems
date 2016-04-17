@@ -1,3 +1,6 @@
+// Rodrigo Valle
+// 104 494 120
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -9,12 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// BUG(?): when --output and --input refer to the same file, it deletes all
-// contents of that file
-// What should open/creat errors look like with printf and perror?
-// What if a flag is passed without its argument?
-// - fprintf smoething to stderr
-
+// function name inspired by Carey Nachenberg
 void
 blow_chunks()
 {
@@ -32,26 +30,27 @@ replace_fd(int old_fd, int new_fd)
 	}
 }
 
+// __attribute__((unused)) supresses -Wunused-parameter warning
 void
-sigseg_handler(int signum)
+sigseg_handler(__attribute__((unused)) int signum)
 {
-	fprintf(stderr, "error: segfault caught, exiting");
+	// fprintf and perror are not async safe, see signal(7)
+	write(STDERR_FILENO, "segfault caught, exiting", 24); // 24 byte string
 	exit(3);
 }
 
 void
 print_usage(char *argv0)
 {
-	printf("Usage: %s [--input=FILE] [--output=FILE] [--segfault] [--catch]", argv0);
+	printf("Usage: %s [--input=FILE] [--output=FILE] [--segfault] [--catch]",
+			argv0);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int o;
-	int new_fd;
-	int mode;
-	int opt_index = 0;
+	int o, mode, new_fd;
+	int oindex = 0;
 	int segflag = 0;
 	struct option long_opts[] =
 	{
@@ -62,7 +61,7 @@ main(int argc, char *argv[])
 		{0, 0, 0, 0}
 	};
 
-	while ((o = getopt_long(argc, argv, "", long_opts, &opt_index)) != -1)
+	while ((o = getopt_long(argc, argv, "", long_opts, &oindex)) != -1)
 	{
 		switch (o) {
 			case 'i':
@@ -84,21 +83,21 @@ main(int argc, char *argv[])
 				signal(SIGSEGV, sigseg_handler);
 				break;
 			case '?':
-				break;
-			default:
+				print_usage(argv[0]);
+				exit(4);
 				break;
 		}
 	}
 
 	if (segflag) {
-		blow_chunks(); // force a segfault
+		blow_chunks();  // force a segfault
 	}
 
 	int stat;
-	char c = 0;
-	while ((stat = read(STDIN_FILENO, &c, 1)) > 0)
+	char buf[1000];  // do a buffered read because it's faster
+	while ((stat = read(STDIN_FILENO, &buf, 1000)) > 0)
 	{
-		if(write(STDOUT_FILENO, &c, 1) == -1) {
+		if(write(STDOUT_FILENO, &buf, stat) == -1) {
 			perror("write");
 		}
 	}
