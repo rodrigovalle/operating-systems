@@ -1,0 +1,105 @@
+Zhaoxing
+zbu@ucla.edu
+12-2 Monday
+12:30 - 1:30 Moneday
+11 - 12 Thursday
+BH 4659
+
+dup2() is atomic
+is the equivalent of 
+close()
+dup()
+
+always check with WIFEXITED
+before calling WEXITSTATUS
+
+also:
+use WIFSIGNALED
+and WTERMSIG
+to get the signal that killed the process
+
+signal() shouldn't be use in a multi-threaded application
+use sigaction()
+
+test cases for 1a
+1. one character at a time
+2. <cr><lf>
+3. terminal mode (? if you unset the ISIG bit)
+4. EOF from shell (exit)
+5. pass I/O to & from shell
+6. ^C sends SIGINT --> bash return 1
+7. exit status of bash
+
+learn:
+- search/read
+- github
+- sample code?
+
+succeed in this course:
+1. cooperation (only project 3)
+2. choose right TA
+
+project 1b
+1. code from 1a
+2. socket code -- tutorial
+3. encryption -- sample code in manual page
+code refactor all of these things and bam you get project 1b
+great
+copying tutorial code is totally fineeeeeee
+
+client should have two threads, two buffers
+- one to write to socket
+- one to read from socket
+
+server
+- one thread to read from socket and write to shell
+- one thread to read from shell and send to socket
+
+implement encryption and decryption
+- log should show EXACTLY what's being sent over the socket, whether it's
+  encrypted or not.
+
+no need to output shell exit status
+don't use bzero and bcopy
+use memset(), memcpy() instead!
+
+they'll never give input that's too big -- no need to sanitize input
+just use atoi or whatever, you know, fuck it
+use localhost
+
+4-byte number: 0A 0B 0C 0D
+0A       0D
+0B       0C
+0C       0B
+0D       0A
+big      little
+endian   endian
+network  x86
+
+htons() changes little endian to big endian
+
+tutorials point socket server example
+single client
+
+encrypt
+twofish default & cfb, 16 byte key?
+1. every input to the encrypt function should be a block of fixed size
+2. stream - any length --- USE THIS MODE
+recommends cfb
+- requires IV -- initialization vector
+- don't worry about cyrpographically secure random number generation
+- have to give the random IV to the server process somehow
+	- generate IV client, pass it to server
+	- just use rand() in client and server code with the same seed
+- IV can be public
+can use getrandom()
+
+pitfall
+logfiles must be consistent
+can  use write printf dprintf to print out to log file
+problem is that write is unbuffered
+printf family is buffered
+remember too that read is not null terminated
+mixing write and printf can also cause buffer overflow
+
+shouldn't have empty lines after exiting (?)
