@@ -23,11 +23,11 @@ server: $(SERVERSOURCES) $(SERVEROBJECTS)
 %.o: %.c
 	$(CC) -c $< $(CFLAGS)
 
-check: $(TARGET)
-	./$(TARGET)
+#check: $(TARGET)
+#	./$(TARGET)
 
 clean:
-	rm -f $(TARGET) *.o
+	rm -f *.o server client
 
 dist: clean
 	rm -f $(DIST)
