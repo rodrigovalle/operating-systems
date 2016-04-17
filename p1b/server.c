@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <pthread.h>
 #include <errno.h>
+#include <pthread.h>
 #include <mcrypt.h>
 
 #include <stdio.h>
@@ -26,7 +27,7 @@ parse_opts(int argc, char *argv[])
 {
 	int opt;
 	int optindex;
-	sstruct option longopts[] = {
+	struct option longopts[] = {
 		{"port", required_argument, NULL, 'p'},
 		{"encrypt", no_argument, &eflg, 1},
 		{0,0,0,0}
@@ -120,8 +121,10 @@ spawn_shell(int *sh_rd, int *sh_wr)
 		// close the shell process's pipe ends:
 		close(sh_out[1]);   // the write end of the shell output pipe
 		close(srv_out[0]);  // the read end of the server output pipe
-		*sh_rd = sh_out[0];
-		*sh_wr = srv_out[1];
+		if (sh_rd != NULL && sh_wr != NULL) {
+			*sh_rd = sh_out[0];
+			*sh_wr = srv_out[1];
+		}
 
 	} else {
 		perror("fork");
@@ -131,40 +134,78 @@ spawn_shell(int *sh_rd, int *sh_wr)
 	return pid;
 }
 
+void*
+sh_listen(void *arg)
+{
+	int pfd, r;
+	char buf[BUFSIZE];
+
+	// get the shell pipe file descriptor from arg
+	pfd = *(int *)arg;
+
+	while ((r = read(pfd, buf, BUFSIZE)) > 0) {
+		write(STDOUT_FILENO, buf, r);
+	}
+
+	if (r == 0) {  // EOF from shell
+		exit(2);
+	} else {
+		perror("server: failed to read from shell process");
+		exit(FATAL);
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
-	int srv_out[2];
-	int sh_out[2];
-	int shpid, sockfd, client;
-	char buf[BUFSIZE];
+	pid_t shpid;
+	pthread_t tid;
+	ssize_t s;
+	int sh_rd, sh_wr;
+	int sockfd, clientfd;
 	struct sockaddr_in addr;
+	char buf[BUFSIZE];
 
 	parse_opts(argc, argv);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sockfd < 0) {
-		perror("couldn't open socket");
+		perror("srv: couldn't open socket");
 		exit(FATAL);
 	}
 
 	memset(&addr, 0, sizeof addr);
 	addr.sin_family = AF_INET;
-	addr.sin_port = hton(port);
-	inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr)
+	addr.sin_port = htons(port);
+	inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
+	// TODO: error checks
 	bind(sockfd, (struct sockaddr *)&addr, sizeof addr);
 	listen(sockfd, 1); // server only handles one connection; backlog=1
+	clientfd = accept(sockfd, NULL, NULL);
 
-	// NOTE: we resuse the addr struct since we don't care about it after binding
-	clientfd = accept(sockfd, &addr, sizeof addr); // ??????????? questionable
-	close(sockfd); // won't be needing this anymore  // also questionable
-
+	shpid = spawn_shell(&sh_rd, &sh_wr);
+	// sigaction(SIGPIPE, sighandler); TODO: FIX THIS
+	
 	// redirect the server's standard streams to the socket
-	dup2(sockfd, STDIN_FILENO);
-	dup2(sockfd, STDOUT_FILENO);
-	dup2(sockfd, STDERR_FILENO);
+	dup2(clientfd, STDIN_FILENO);
+	dup2(clientfd, STDOUT_FILENO);
+	dup2(clientfd, STDERR_FILENO);
 
-	shpid = spawn_shell(srv_out, sh_out);
-	signal(SIGPIPE, sighandler);
+	// spawn thread to handle shell proc reading
+	if ((errno = pthread_create(&tid, NULL, sh_listen, &sh_rd)) != 0) {
+		perror("srv: sh_listener thread creation");
+	}
+
+	// read input from client and write to shell
+	while ((s = read(STDIN_FILENO, buf, BUFSIZE)) > 0) {
+		write (sh_wr, buf, s);
+	}
+	if (s == 0) {  // recieved EOF from client
+		close(clientfd);
+		close(sockfd);
+		exit(1);
+	} else {
+		perror("srv: reading from client");
+	}
 }

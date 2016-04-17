@@ -1,6 +1,6 @@
 SHELL=/bin/bash
 CC=gcc
-CFLAGS=-Wall -Wextra -ggdb #-pthread
+CFLAGS=-Wall -Wextra -ggdb -pthread
 
 CLIENTSOURCES=client.c
 SERVERSOURCES=server.c
