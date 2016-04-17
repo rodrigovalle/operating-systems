@@ -1,0 +1,109 @@
+Lab 1a
+Part 1: Terminal Settings
+Part 2: IPC between terminal process and shell process
+IPC = Inter process communication
+
+Default:
+canonical + echo
+
+Code Example:
+char buf[128];
+int size = 0;
+while ((size = read(0 , buf, 128)) > 0)
+	write(1, buf, size);
+
+abc [enter]
+--> read request finishes
+--> proceeds to write
+--> you now have two copies of what your wrote on the terminal
+
+Code Example:
+struct termios tattr;
+tcgetattr(0, &tattr);
+tcattr.c_lflag &= ~(ICANON | ECHO)
+tcattr.c_cc[VTIME] = 0;
+tcattr.c_cc[VMIN] = 1;
+tcsetattr(0, TCSAFLUSH, &attr);
+char buf[128]
+int size = 0;
+while ((size = read(0, buf, 128)) > 0)
+	write(1, buf, size);
+
+Might need a bigger read buffer for more than one user of a system.
+
+-------------------------------------------------------------------
+Part 2
+
++----------+       +---------+
+| terminal |<------|  shell  |
+| process  |------>| process |
++----------+       +---------+
+
+pipe to shell from term (read and write end)
+pipe to term from shell (read and write end)
+
+int pipe_from_shell[2]; --> file descriptor for read-end [0]
+                        \-> file descriptor for write-end [1]
+int pipe_to_shell[2];
+
+pipe(pipe_from_shell);
+pipe(pipe_to_shell);
+
+int pid = fork();
+if (pid == 0) {  // shell process
+	// redirect read end of term to to shell pipe to the write end of the
+	// shell to term pipe
+
+	close(pipe_from_shell[0]);  // close read end of pipe_from_shell
+	dup2(pipe_from_shell[1], 1);
+
+	close(pipe_to_shell[1]);  // close the write end of pipe_to_shell
+	dup2(pipe_to_shell[0], 0);
+
+	// create shell
+	execl("bin/bash", "/bin/bash", NULL);
+} else { // terminal process
+	// setup SIGPIPE handler using "signal"	
+	signal(SIGPIPE, handler);
+	// terminal doesn't use read end of pipe_to_shell
+	close(pipe_to_shell[0]);
+	// terminal doesn't use write end of pipe_from_shell
+	close(pipe_from_shell[0]);
+
+	pthread_create(... thread_func);
+	// read input from keyboard
+}
+// this thread reads input from shell pipe
+void * thread_func(void *fd) { // --> and write it to stdout
+	buffer
+	size
+	while ((size = read(*fd, buffer, 1)) > 0) {
+		// upon recieving EOF from shell
+		if (buffer[0] == '\004') {
+			close(...);
+			close(...);
+			kill(pid, SIGHUP)
+			exit(1);
+		} else {
+			write(1, buffer, ...);
+		}
+	}
+}
+
+if you don't close the pipe read end, the program will freeze. Why?
+Both the terminal process and the shell process will inherit both ends of the
+pipe when you fork()..
+http://stackoverflow.com/questions/19265191/why-should-you-close-a-pipe-in-linux
+
+threads share file descriptors -- they don't copy them like processes do
+use kill() to send signals to the shell
+
+don't call printf() on ctrl+c
+should print on ctrl-d
+
+waitpid to check the exit status and reap processes -- blocks
+WNOHANG -- polling wait, poll status of process
+WEXITSTATUS -- allows you to extract the exit status from the stuff that waitpid
+returns.
+
+don't need to call pthread_join like ever
