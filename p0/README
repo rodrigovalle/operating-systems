@@ -1,0 +1,73 @@
+Rodrigo Valle
+104 494 120
+
+
+INCLUDED FILES
+-------------------------------------------------------------------------------
+backtrace.png -- screenshot of gdb running on my machine. I asked for backtrace
+	immediately after the segfault occurred. I compiled with the -ggdb option
+	so you can see exactly what happened: main called the segfault function,
+	blow_chunks(), which was the function running when the program crashed.
+
+breakpoint.png -- before running the program I set a breakpoint at line 20, the
+	line where I dereferenced a null pointer. GDB halted execution before the
+	program dereferenecd it, however, and I was able to examine the address
+	that the pointer held.
+
+lab0.c -- the source file of my program
+
+Makefile -- includes default, check, dist and clean targets. Compiles with
+	debug symbols
+
+README -- relevant project information
+
+
+SMOKE TEST
+-------------------------------------------------------------------------------
+I wrote one test for every major program feature, and a few more to test things
+like option ordering and error handling.
+
+make check will test whether the program correctly:
+ - redirects a file into a file that did not exist beforehand
+ - redirects a file, overwriting an existing file
+ - redirects a file to its stdout
+ - redirects its stdin to a file
+ - exits and returns 1 upon failure to open/read a file
+ - exits and returns 2 upon failure to modify/write a file
+ - exits and returns 3 upon catching SIGSEGV
+ - exits and returns 0 when an error is not encountered
+ - segfaults upon being passed the --segfault flag
+ - catches SIGSEGV when passed the --catch flag
+
+
+RESOURCES
+-------------------------------------------------------------------------------
+Getopt Documentation/Examples:
+http://www.gnu.org/software/libc/manual/html_node/Getopt.html
+
+Signal Handling Documentation/Examples:
+http://www.gnu.org/software/libc/manual/html_node/Basic-Signal-Handling.html
+http://stackoverflow.com/questions/14573000
+
+Makefile Resources
+http://mrbook.org/blog/tutorials/make/ -- looked at the example Makfile
+https://felixcrux.com/blog/creating-basic-makefile -- another good example
+http://www.gnu.org/software/make/manual/make.html
+
+I also took a look at the recommended man pages to figure out how to properly
+use the necessary system calls.
+
+
+OTHER NOTES
+-------------------------------------------------------------------------------
+I used write(2) to output an error message from my segfault signal handler
+after reading a StackOverflow post about async-safe functions.
+
+Instead of using the 0, 1 and 2 file descriptors to write to standard in,
+standard out and standard error respectively, I used the STDIN_FILENO,
+STDOUT_FILENO and STDERR_FILNO constants to do the same thing. Each one of these
+constants is defined in the unistd.h header file.
+
+The Makefile compiles with the -Wall and -Wextra flags. I had to declare the
+signal handler's int signum parameter with the unused attribute to keep gcc from
+generating a warning.
