@@ -122,6 +122,7 @@ spawn_shell(int *sh_rd, int *sh_wr)
 		close(sh_out[1]);   // the write end of the shell output pipe
 		close(srv_out[0]);  // the read end of the server output pipe
 		if (sh_rd != NULL && sh_wr != NULL) {
+			// do these get pushed off the stack after the function exits?
 			*sh_rd = sh_out[0];
 			*sh_wr = srv_out[1];
 		}
@@ -137,7 +138,8 @@ spawn_shell(int *sh_rd, int *sh_wr)
 void*
 sh_listen(void *arg)
 {
-	int pfd, r;
+	int pfd;
+	ssize_t r;
 	char buf[BUFSIZE];
 
 	// get the shell pipe file descriptor from arg

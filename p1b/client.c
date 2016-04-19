@@ -1,6 +1,8 @@
 #include <getopt.h>
 #include <termios.h>
 #include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -18,10 +20,12 @@
 
 #define FATAL 100
 #define BUFSIZE 128 
+
 static const char keyfile[] = "my.key";
 
 static int eflg = 0;
 static int logfd = -1;
+static int sockfd = -1;
 static uint16_t port = 0;
 static struct termios termdef;
 
@@ -85,15 +89,70 @@ setup_terminal()
 }
 
 /* Closes the network connection and restores the default terminal settings */
-// TODO: implement closing the network connection
 // TODO: make sure that no two threads can call exit at the same time
 void
 cleanup()
 {
-	// close network connection
+	// close open file descriptors
+	if(sockfd != -1) close(sockfd);
+	if(logfd != -1)  close(logfd);
+
 	// restore default terminal settings
 	if (tcsetattr(STDERR_FILENO, TCSAFLUSH, &termdef) < 0)
 		fprintf(stderr, "Unable to restore default terminal settings.\n");
+}
+
+/* Creates a tcp socket, but exits on error. */
+int
+mk_socket()
+{
+	int sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // see ip(7), tcp(7)
+	if (sfd < 0) {
+		perror("couldn't open socket");
+		exit(FATAL);
+	}
+	return sfd;
+}
+
+/* Connects to the server process, but exits on error. */
+void
+connect_to_server(int sfd)
+{
+	struct sockaddr_in addr;
+
+	memset(&addr, 0, sizeof addr);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	inet_pton(AF_INET, "127.0.0.1", &(addr.sin_addr));
+
+	if (connect(sfd, (struct sockaddr *)&addr, sizeof addr) == -1) {
+		perror("couldn't connect to server");
+		close(sfd);
+		exit(FATAL);
+	}
+}
+
+/* The background thread routine recieving from the server process via
+ * the socket and printing the server's messages to stdout. */
+void
+*socket_listen(void *arg)
+{
+	int sfd;
+	ssize_t r;
+	char buf[BUFSIZE];
+
+	sfd = *(int *)arg;
+
+	while ((r = recv(sfd, buf, BUFSIZE, 0)) > 0) {
+		write(STDOUT_FILENO, buf, r);
+		if (logfd != -1) {
+			write(logfd, "RECIEVED: ", 10);
+			write(logfd, buf, r);
+			write(logfd, "\n", 1);
+		}
+	}
+
+	return NULL;
 }
 
 /* Read input from the user and send it to the server.
@@ -103,8 +162,7 @@ int
 main(int argc, char *argv[])
 {
 	ssize_t s;
-	int sockfd;
-	struct sockaddr_in addr;
+	pthread_t tid;
 	char buf[BUFSIZE];
 
 	parse_opts(argc, argv);
@@ -112,22 +170,12 @@ main(int argc, char *argv[])
 	fprintf(stderr, "port: %d\n", port);
 	fprintf(stderr, "logfd: %d\n", logfd);
 
-	// make a TCP socket
-	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // see ip(7), tcp(7)
-	if (sockfd < 0) {
-		perror("couldn't open socket");
-		exit(FATAL);
-	}
+	sockfd = mk_socket();
+	connect_to_server(sockfd);
 
-	memset(&addr, 0, sizeof(struct sockaddr_in));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	inet_pton(AF_INET, "127.0.0.1", &(addr.sin_addr));
-
-	if (connect(sockfd, (struct sockaddr *)&addr, sizeof addr) == -1) {
-		perror("couldn't connect to server");
-		close(sockfd);
-		exit(FATAL);
+	// spawn a thread to handle reading from the socket
+	if ((errno = pthread_create(&tid, NULL, socket_listen, &sockfd)) != 0) {
+		perror("srv: socket_listener thread creation");
 	}
 
 	setup_terminal();
@@ -138,9 +186,7 @@ main(int argc, char *argv[])
 		for (ssize_t i = 0; i < s; i++) {
 			switch (buf[i]) {
 				case '\004': // ^D from terminal
-					// - close network connection
-					// - restore terminal
-					exit(0);
+					exit(0); // calls cleanup which closes network connection & restores term
 					break;
 
 				default:
@@ -158,6 +204,7 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	// TODO: pretty sure the spec means EOF of read error from the sever process
 	// EOF or read error
 	// - close the network connection
 	// - restore terminal
