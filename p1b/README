@@ -44,7 +44,7 @@ my.key   - a key used by the server and client for encrypted communcations over
 
 TESTING
 -------
-Went throught the rubric and made sure that the processes exited correctly, that
+Went through the rubric and made sure that the processes exited correctly, that
 the log file functioned correctly, and that the encrypt option functioned
 correctly.
 
