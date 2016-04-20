@@ -31,6 +31,7 @@ static uint16_t port = 0;
 static struct termios termdef;
 static MCRYPT td;
 static char *IV = NULL;
+static pthread_mutex_t wr_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void exit_routine(int ret_code);
 void encrypt_init();
@@ -211,14 +212,18 @@ void
 	int sfd;
 	ssize_t r;
 	char buf[BUFSIZE];
+	char str[BUFSIZE];
 
 	sfd = *(int *)arg;
 
 	while ((r = recv(sfd, buf, BUFSIZE, 0)) > 0) {
 		if (logfd != -1) {
-			write(logfd, "RECIEVED: ", 10);
-			write(logfd, buf, r);
-			write(logfd, "\n", 1);
+			pthread_mutex_lock(&wr_lock);
+			sprintf(str, "RECEIVED %d bytes: ", (int)r);
+			write(logfd, str, strlen(str)); // print message
+			write(logfd, buf, r); // print bytes
+			write(logfd, "\n", 1); // print newline
+			pthread_mutex_unlock(&wr_lock);
 		}
 		
 		if (eflg) {
@@ -245,11 +250,11 @@ send_to_srv(int sockfd, char c)
 	send(sockfd, &c, 1, 0);
 
 	if (logfd != -1) {
-		// TODO: careful, races can occur with the background
-		// thread that's also trying to write to the log
-		write(logfd, "SENT: ", 6);
+		pthread_mutex_lock(&wr_lock);
+		write(logfd, "SENT 1 bytes: ", 14);
 		write(logfd, &c, 1);
 		write(logfd, "\n", 1);
+		pthread_mutex_unlock(&wr_lock);
 	}
 }
 

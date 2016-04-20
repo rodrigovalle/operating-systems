@@ -1,22 +1,52 @@
 Rodrigo Valle
 104 494 120
 
+SLIP DAYS
+---------
+One slip day was used for this project.
+
+
 NOTES
 -----
+Everything seems to work, although I belive there might be an issue with race
+conditions when writing to the file. That is, if we're receiving data from the
+shell and at the same time data is being written to the shell, the order in
+which that data is logged to the log file is not deterministic. It depends on
+which thread gets scheduled to run, so information could possibly be out of
+order.
 
-These are my notes.
+For a shell application though, this race condition shouldn't matter much since
+a command is sent followed by a newline to the shell, and then data comes from
+the shell to the user all at once. Generally, there shouldn't be an overlap that
+could cause a race condition.
+
+Since the client deals with writing to the log file this problem is specific to
+the client. Both programs may suffer from an error arising when the exit routine
+is called twice for some reason.
+
+Also, the server does not accept more than one client. The spec didn't say
+anything about support for more than one client.
 
 
-FEATURES
---------
-
-Feature set.
+FILES
+-----
+server.c - the source code used to build the server application which waits for
+           the client to connect and sends the client's commands to the shell
+client.c - source code used to build the client application which connects to
+           the server and sends it commands from the user's terminal
+Makefile - used to build the server and client programs.
+           make client - builds the client
+           make server - builds the server
+           make        - builds both the client and server
+my.key   - a key used by the server and client for encrypted communcations over
+           the TCP socket.
 
 
 TESTING
 -------
-
-Tests run
+Went throught the rubric and made sure that the processes exited correctly, that
+the log file functioned correctly, and that the encrypt option functioned
+correctly.
 
 
 REFERENCES

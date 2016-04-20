@@ -31,6 +31,6 @@ clean:
 
 dist: clean
 	rm -f $(DIST)
-	tar cvzf $(DIST) *.c README Makefile
+	tar cvzf $(DIST) *.c README Makefile my.key
 
 .PHONY: check clean dist
