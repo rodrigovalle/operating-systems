@@ -229,7 +229,8 @@ void
 
 		write(STDOUT_FILENO, buf, r);
 	}
-
+	// read error or EOF from connection
+	exit_routine(1);
 	return NULL;
 }
 
@@ -252,6 +253,7 @@ send_to_srv(int sockfd, char c)
 	}
 }
 
+// one exit routine to rule them all
 /* close the network connection/log file and restore the terminal */
 // TODO: make sure the two threads can't call this routine at the same time
 void
@@ -277,9 +279,6 @@ main(int argc, char *argv[])
 	pthread_t tid;
 
 	parse_opts(argc, argv);
-	fprintf(stderr, "eflg: %d\n", eflg);
-	fprintf(stderr, "port: %d\n", port);
-	fprintf(stderr, "logfd: %d\n", logfd);
 
 	sockfd = mk_socket();
 	connect_to_server(sockfd);
@@ -312,9 +311,6 @@ main(int argc, char *argv[])
 				break;
 		}
 	}
-	// TODO: pretty sure the spec means EOF of read error from the sever process
 	// EOF or read error
-	// - close the network connection
-	// - restore terminal
 	exit_routine(1);
 }

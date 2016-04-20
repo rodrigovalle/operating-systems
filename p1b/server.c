@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -23,11 +24,9 @@
 #define FATAL		100
 #define RANDSEED	42
 
-// TODO:
-// - catch SIGPIPE with sigaction
-// - 
 static int eflg = 0;
 static uint16_t port = 0;
+static pid_t shpid = 0;
 static MCRYPT td;
 static char keyfile[] = "my.key";
 static char *IV = NULL;
@@ -130,27 +129,17 @@ parse_opts(int argc, char *argv[])
 	}
 }
 
-/* Reaps the shell's exit status and prints it to the screen. */
-void
-reap_sh()
-{
-	int wstat;
-
-	if (waitpid(-1, &wstat, WNOHANG) < 0) {
-		perror("waitpid");
-		return;
-	}
-}
-
-/* Handles SIGPIPE by exiting with return code 1. 
+/* Handles SIGPIPE by exiting with return code 2. 
  * remember, exiting always causes the restore_terminal() function to run
  */
 void
 sighandler(__attribute__((unused)) int sig)
 {
 	// recieved SIGPIPE
-	// - close the network connection
-	// - kill the shell
+	// - close the network connection (happens automatically on process exit)
+	if (shpid > 0) {
+		kill(shpid, SIGHUP);
+	}
 	exit(2);
 }
 
@@ -256,8 +245,6 @@ get_connection()
 	int sockfd, clientfd, r;
 	struct sockaddr_in addr;
 
-	eflg = 1;
-
 	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sockfd < 0) {
 		perror("srv: couldn't open socket");
@@ -295,10 +282,23 @@ get_connection()
 	return clientfd;
 }
 
+void
+set_sig_handler()
+{
+	struct sigaction sa;
+
+	sa.sa_handler = sighandler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	if (sigaction(SIGPIPE, &sa, NULL) == -1) {
+		perror("couldn't set SIGPIPE handler");
+		exit(FATAL);
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
-	pid_t shpid;
 	pthread_t tid;
 	ssize_t s;
 	int sh_rd, sh_wr, clientfd;
@@ -310,7 +310,7 @@ main(int argc, char *argv[])
 	clientfd = get_connection();
 
 	shpid = spawn_shell(&sh_rd, &sh_wr);
-	// sigaction(SIGPIPE, sighandler); TODO: FIX THIS
+	set_sig_handler();
 	
 	// redirect the server's standard streams to the socket
 	dup2(clientfd, STDIN_FILENO);
@@ -323,16 +323,13 @@ main(int argc, char *argv[])
 		perror("srv: sh_listener thread creation");
 	}
 
-	// read input from client and write to shell
+	// read input from client (socket) and write to shell
 	while ((s = read(STDIN_FILENO, &c, 1)) > 0) {
 		if (eflg) {
 			decrypt(&c);
 		}
-		write (sh_wr, &c, 1);
+		write(sh_wr, &c, 1);
 	}
-	if (s == 0) {  // recieved EOF from client
-		exit(1);
-	} else {
-		perror("srv: reading from client");
-	}
+	 // recieved EOF/read error from client
+	exit(1);
 }
