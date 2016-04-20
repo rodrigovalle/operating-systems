@@ -18,8 +18,9 @@
 
 #include <mcrypt.h>
 
-#define FATAL 100
-#define BUFSIZE 128 
+#define FATAL		100
+#define BUFSIZE		128 
+#define RANDSEED	42   // this should match with server.c
 
 static const char keyfile[] = "my.key";
 
@@ -28,7 +29,11 @@ static int logfd = -1;
 static int sockfd = -1;
 static uint16_t port = 0;
 static struct termios termdef;
+static MCRYPT td;
+static char *IV = NULL;
 
+void exit_routine(int ret_code);
+void encrypt_init();
 
 /* If the --encrypt flag is found, set the global eflg.
  * If the --log option is found, return the logfile's name
@@ -41,7 +46,7 @@ parse_opts(int argc, char *argv[])
 	int optindex;
 	struct option longopts[] = {
 		{"port", required_argument, NULL, 'p'},
-		{"encrypt", no_argument, &eflg, 1},
+		{"encrypt", no_argument, NULL, 'e'},
 		{"log", required_argument, NULL, 'l'},
 		{0,0,0,0}
 	};
@@ -53,7 +58,7 @@ parse_opts(int argc, char *argv[])
 				long int p = strtol(optarg, NULL, 10);
 				if (p > UINT16_MAX || p < 0) {
 					fprintf(stderr, "invalid port specified\n");
-					exit(FATAL);
+					exit_routine(FATAL);
 				}
 				port = (uint16_t)p;
 				break;
@@ -65,15 +70,85 @@ parse_opts(int argc, char *argv[])
 						     S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 				break;
 
+			case 'e':
+				encrypt_init();
+				break;
+
 			case '?':
-				exit(FATAL);
+				exit_routine(FATAL);
 		}
+	}
+}
+
+void
+encrypt_init()
+{
+	int keyfd, i;
+	int keysize = 16; // key is 16 bytes (128 bits)
+	char key[keysize];
+
+	eflg = 1;
+
+	// open file containing key
+	keyfd = open(keyfile, O_RDONLY);
+	if (keyfd < 0) {
+		perror("couldn't open key file");
+		exit_routine(FATAL);
+	}
+
+	// read the first 16 bytes from the keyfile
+	// note: these should be the only 16 bytes in the file
+	i = read(keyfd, key, keysize);
+	if (i < 0) {
+		perror("couldn't read from key file");
+		exit_routine(FATAL);
+	}
+
+	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
+	if (td == MCRYPT_FAILED) {
+		exit_routine(FATAL);
+	}
+	IV = malloc(mcrypt_enc_get_iv_size(td));
+
+	srand(RANDSEED);
+	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
+		IV[i] = rand();
+	}
+
+	i = mcrypt_generic_init(td, key, keysize, IV);
+	if (i < 0) {
+		mcrypt_perror(i);
+		exit_routine(FATAL);
+	}
+}
+
+/* this should only be called by the send_to_srv routine */
+void
+encrypt(char *c)
+{
+	mcrypt_generic(td, c, 1);
+}
+
+/* this should only be called by the socket_listen routine */
+void
+decrypt(char *c)
+{
+	mdecrypt_generic(td, c, 1);
+}
+
+void
+encrypt_deinit()
+{
+	mcrypt_generic_end(td);
+	if (IV != NULL) {
+		free(IV);
+		IV = NULL;
 	}
 }
 
 /* Stores the default terminal settings and sets noncanonical no-echo mode. */
 void
-setup_terminal()
+setup_term()
 {
 	struct termios termopts;
 	if (tcgetattr(STDERR_FILENO, &termdef) < 0)
@@ -88,15 +163,11 @@ setup_terminal()
 		perror("tcsetattr");
 }
 
-/* Closes the network connection and restores the default terminal settings */
+/* Restores the default terminal settings */
 // TODO: make sure that no two threads can call exit at the same time
 void
-cleanup()
+restore_term()
 {
-	// close open file descriptors
-	if(sockfd != -1) close(sockfd);
-	if(logfd != -1)  close(logfd);
-
 	// restore default terminal settings
 	if (tcsetattr(STDERR_FILENO, TCSAFLUSH, &termdef) < 0)
 		fprintf(stderr, "Unable to restore default terminal settings.\n");
@@ -109,7 +180,7 @@ mk_socket()
 	int sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // see ip(7), tcp(7)
 	if (sfd < 0) {
 		perror("couldn't open socket");
-		exit(FATAL);
+		exit_routine(FATAL);
 	}
 	return sfd;
 }
@@ -128,7 +199,7 @@ connect_to_server(int sfd)
 	if (connect(sfd, (struct sockaddr *)&addr, sizeof addr) == -1) {
 		perror("couldn't connect to server");
 		close(sfd);
-		exit(FATAL);
+		exit_routine(FATAL);
 	}
 }
 
@@ -144,15 +215,56 @@ void
 	sfd = *(int *)arg;
 
 	while ((r = recv(sfd, buf, BUFSIZE, 0)) > 0) {
-		write(STDOUT_FILENO, buf, r);
 		if (logfd != -1) {
 			write(logfd, "RECIEVED: ", 10);
 			write(logfd, buf, r);
 			write(logfd, "\n", 1);
 		}
+		
+		if (eflg) {
+			for (int i = 0; i < r; i++) {
+				decrypt(buf+i);
+			}
+		}
+
+		write(STDOUT_FILENO, buf, r);
 	}
 
 	return NULL;
+}
+
+/* handles sending, logging sends, and encryption */
+void
+send_to_srv(int sockfd, char c)
+{
+	if (eflg) {
+		encrypt(&c);
+	}
+
+	send(sockfd, &c, 1, 0);
+
+	if (logfd != -1) {
+		// TODO: careful, races can occur with the background
+		// thread that's also trying to write to the log
+		write(logfd, "SENT: ", 6);
+		write(logfd, &c, 1);
+		write(logfd, "\n", 1);
+	}
+}
+
+/* close the network connection/log file and restore the terminal */
+// TODO: make sure the two threads can't call this routine at the same time
+void
+exit_routine(int ret_code)
+{
+	if (sockfd != -1)
+		close(sockfd);
+	if (logfd != -1)
+		close(logfd);
+	if (eflg == 1)
+		encrypt_deinit();
+
+	exit(ret_code);
 }
 
 /* Read input from the user and send it to the server.
@@ -163,7 +275,6 @@ main(int argc, char *argv[])
 {
 	ssize_t s;
 	pthread_t tid;
-	char buf[BUFSIZE];
 
 	parse_opts(argc, argv);
 	fprintf(stderr, "eflg: %d\n", eflg);
@@ -175,38 +286,35 @@ main(int argc, char *argv[])
 
 	// spawn a thread to handle reading from the socket
 	if ((errno = pthread_create(&tid, NULL, socket_listen, &sockfd)) != 0) {
-		perror("srv: socket_listener thread creation");
+		perror("client: socket_listener thread creation");
 	}
 
-	setup_terminal();
-	atexit(cleanup);
+	setup_term();
+	atexit(restore_term);
 
-	// read input from the user
-	while ((s = read(STDIN_FILENO, buf, BUFSIZE)) > 0) {
-		for (ssize_t i = 0; i < s; i++) {
-			switch (buf[i]) {
-				case '\004': // ^D from terminal
-					exit(0); // calls cleanup which closes network connection & restores term
-					break;
+	// read one character at a time from the user
+	char c;
+	while ((s = read(STDIN_FILENO, &c, 1)) > 0) {
+		switch (c) {
+			case '\r':
+			case '\n':
+				write(STDOUT_FILENO, "\r\n", 2);
+				send_to_srv(sockfd, '\n');
+				break;
 
-				default:
-					// TODO: encryption
-					write(STDOUT_FILENO, buf+i, 1);
-					send(sockfd, buf+i, 1, 0);
-					if (logfd != -1) {
-						// TODO: careful, races can occur with the background
-						// thread that's also trying to write to the log
-						write(logfd, "SENT: ", 6);
-						write(logfd, buf+i, 1);
-						write(logfd, "\n", 1);
-					}
-					break;
-			}
+			case '\004': // ^D from terminal
+				exit_routine(0);
+				break;
+
+			default:
+				write(STDOUT_FILENO, &c, 1);  // echo to term
+				send_to_srv(sockfd, c);
+				break;
 		}
 	}
 	// TODO: pretty sure the spec means EOF of read error from the sever process
 	// EOF or read error
 	// - close the network connection
 	// - restore terminal
-	exit(1);
+	exit_routine(1);
 }
