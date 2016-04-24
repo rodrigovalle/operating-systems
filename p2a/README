@@ -1,0 +1,27 @@
+2A.1A: Why does it take this many threads or iterations to result in failure?
+	It's a matter of probability -- the more threads or iterations there are,
+	the larger the chance that the scheduler could allow one thread to preempt
+	the other in the middle of updating the counter variable, causing an
+	incorrect update. On it's own the chance that something bad will happen is
+	very small, but when you're doing that potentially dangerous thing many
+	times, the opportunity for errors is much higher.
+
+  .1B: Why does a significantly smaller number of iterations so seldom fail?
+	When there's smaller number of iterations, there's also a significantly
+	smaller chance that one thread will preempt the other inside the critical
+	section.
+
+2A.2A: Why does the average cost per operation drop with increasing iterations?
+	The average cost per operation drops with increasing iterations because we,
+	in a sense, "dilute" the cost of thread creation. For example, if we have
+	only one iteration, much of the program's time is spent creating a new
+	thread rather than actually doing useful work. If we increase the number of
+	iterations, the program instead spends the majority of its time performing
+	useful work instead of initialization. In this way, the cost of initializing
+	a thread gets divided out over each operation, bringing the total cost per
+	operation down.
+
+2A.2B: How do we know what the "correct" cost is?
+	
+
+
