@@ -167,7 +167,7 @@ Value        Feature
 4%        mutex correctly used
 4%        spin lock correctly implemented and used
 4%        compare-and-swap correctly implemented and used to implement atomic add
-        
+
         Results (50%) (reasonable run)
 3%        threads and iterations
 4%        correct yield

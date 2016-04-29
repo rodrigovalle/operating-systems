@@ -1,3 +1,27 @@
+Rodrigo Valle
+104 494 120
+
+FILES
+-----
+lab2a.c -- the source file for our thread timing program
+graph1.png -- the first graph requested, increasing the number of iterations for
+              a sigle thread.
+graph2.png -- the second graph requested, increasting the number of threads and
+              having each thread perform 100,000 iterations
+Makefile -- builds the executable by simply running make
+README -- this file
+
+NOTES
+-----
+My source file uses a small amount of function pointer syntax. I've made it more
+readable by adding a typedef to identify the different functions of the "add"
+family. Also note that I had to add a prototype of the add() function in order
+to set the default "add function" pointer to add(). If another function is
+specified via the command line interface, the global add_fun function pointer is
+updated to point to the requested add function flavor.
+
+ANSWERS
+-------
 2A.1A: Why does it take this many threads or iterations to result in failure?
 	It's a matter of probability -- the more threads or iterations there are,
 	the larger the chance that the scheduler could allow one thread to preempt
@@ -7,6 +31,11 @@
 	times, the opportunity for errors is much higher.
 
   .1B: Why does a significantly smaller number of iterations so seldom fail?
+	For a small number of iterations, there's a much higher chance that the
+	thread could finish working before the next thread is instantiated
+	(assuming the thread starts running on when it's created). In this way,
+	threads might complete serially, avoiding any problematic concurrent
+	updates to the shared counter variable.
 	When there's smaller number of iterations, there's also a significantly
 	smaller chance that one thread will preempt the other inside the critical
 	section.
@@ -22,6 +51,73 @@
 	operation down.
 
 2A.2B: How do we know what the "correct" cost is?
+	From the observations from part A, we can estimate the "correct" cost per
+	operation by increasing the number of iterations up to the point where the
+	cost of thread initialization per operation is so low that it hardly matters.
+	We'll be left with a number that's a reasonable estimate of the "real" cost
+	per operation.
+
+  .2C: Why are the --yield runs so much slower? Where is the extra time going?
+	The --yield runs are slower because each thread is taking extra time
+	reqlinquishing control of the CPU to "the next thread in line". It says in
+	the man page that pthread_yield() actually calls sched_yield() under the
+	hood, so this means that the OS scheduler must take over and figure out which
+	thread to schedule next, which takes time and incurs the cost of context
+	switching.
+
+  .2D: Can we get valid timings if we are using --yield? How, or why not?
+	It's not really possible to get valid timings using --yield because when
+	pthread_yield() is called, we deschedule ourselves. Other waiting threads
+	are given the opportunity to run in our place as we are moved to the back of
+	the queue, waiting for another chance to run. Since every other thread in
+	our process exhibits the same behavior, the result is many unecessary
+	context switches and wasted [wall] time. These extra delays do not allow for
+	an accurate measure of wall time.
+
+2A.3A: Why do all of the options perform similarly for low numbers of threads?
+	For low numbers of threads the spin lock, mutex lock, and compare-and-swap
+	lock all perform with roughly the same efficiency because there's less
+	contention for the shared counter. When a resource is not currently being
+	used, all locks behave virutally the same -- that is, they immediately allow
+	the caller to access the resource and set a flag that signals that the
+	resource is currently in use (differences arise in the manner over which
+	different locking mechanisms prevent callers from accessing a resource
+	that's being used). Thus, for low numbers of threads, it's less likely that a
+	resource is being used by another thread, and more likely that the locking
+	mechanism won't block -- acting in the same manner as any other locking
+	mechanism and providing similar completion times.
+
+  .3B: Why do the three protected operations slow down as the number of threads
+       rises?
+	As the number of threads rises, contention over shared resources increases.
+	The more threads there are, the more waiting in line that any particular
+	thread has to do before accessing a highly contested resource. That is, with
+	only one thread, it need not wait or synchronize accesses with any othe
+	thread, but with 32 threads, chances are good that the thread will have to
+	wait for 31 other threads to perform their accesses before acquiring the
+	lock, creating a sort of "convoy effect".
+	Without a lock, though, there is no waiting! If a thread needs to access a 
+	resource it just takes it, and potentially steps all over another thread's
+	counter update. It's certainly faster than waiting in line, however.
+
+  .3C: Why are spin locks so expensive for large numbers of threads?
+	As the prior answer states, with larger the number of threads, the greater
+	the amount of time, on average, that a thread must wait for a resource to
+	become available. Some locks will put the thread to sleep as it waits for a
+	resource to become available, but spin locks will continue trying to obtain
+	the lock, spending CPU cycles trying to unsucessfully grab the lock until
+	it becomes available. When a resource is generally released within a few
+	CPU cycles, spinning can be a very efficient waiting mechanism as the
+	thread is already running when the resources is released and doesn't have to
+	spend time "waking up". However, when a thread spins for more than a few
+	clock cycles, say, an entire timeslice, then spinning threads can be very
+	wasteful indeed. Assuming a round robin scheduler, as is common in MLFQ
+	schedulers, using spin locks to wait over long times can set up the scenario
+	where only one thread can execute while all other threads spin wastefully.
+	The situation worsens when there are fewer cores than there are threads, as 
+	when a waiting thread is scheduled it could waste an entire time slice
+	waiting for a lock that won't be released, because it descheduled the thread
+	holding the lock in order to run.
+	In these types of situations, it's clearly better to put waiting threads to
+	sleep and allow for threads not waiting on a resource to run instead.
 	
-
-

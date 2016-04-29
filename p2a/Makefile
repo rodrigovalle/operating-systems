@@ -20,6 +20,6 @@ clean:
 	rm -f $(TARGET) *.o
 
 dist: clean
-	tar cvzf lab2a-104494120.tar.gz *.c README Makefile
+	tar cvzf lab2a-104494120.tar.gz *.c README Makefile *.png
 
 .PHONY: check clean dist
