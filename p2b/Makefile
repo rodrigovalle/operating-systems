@@ -1,0 +1,29 @@
+SHELL=/bin/sh
+CC=gcc
+CFLAGS=-Wall -Wextra -ggdb -pthread
+LDFLAGS=-static
+SOURCES=lab2b.c SortedList.c
+OBJECTS=$(SOURCES:.c=.o)
+TARGET=lab2b
+
+all: $(SOURCES) $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET)
+
+%.o: %.c
+	$(CC) -c $< $(CFLAGS)
+
+test: tests.c SortedList.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+
+check: test
+	./test --color=never
+
+clean:
+	rm -f $(TARGET) *.o test
+
+dist: clean
+	tar cvzf lab2b-104494120.tar.gz *.c README Makefile
+
+.PHONY: check clean dist check
