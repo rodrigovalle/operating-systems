@@ -1,57 +1,84 @@
+#define _GNU_SOURCE
 #include "SortedList.h"
 #include <string.h>
+#include <pthread.h>
 
-// alright, it's gonna be circular because that seems like the right idea
-void SortedList_insert(SortedList_t *list , SortedListElement_t *element)
+
+void SortedList_insert(SortedList_t *list, SortedListElement_t *element)
 {
-	// first node is the head so skip it
-	SortedListElement_t *cur = list->next;
+	SortedListElement_t *prev_el = list;
+	SortedListElement_t *next_el = list->next;
 
-	// loop to find where to place the given element
-	while ((cur->key != NULL) && (strcmp(element->key, cur->key) > 0))
-		cur = cur->next;
+	while (next_el != list) {
+		if (strcmp(element->key, next_el->key) <= 0)
+			break;
+		prev_el = next_el;
+		next_el = next_el->next;
+	}
 
-	// the element should be placed before the current element
-	element->prev = cur->prev;
-	element->next = cur;
+	if (opt_yield & INSERT_YIELD)
+		pthread_yield();
 
-	cur->prev->next = element;
-	cur->prev = element;
+	element->prev = prev_el;
+	element->next = next_el;
+	prev_el->next = element;
+	next_el->prev = element;
 }
 
-// assuming it's the caller's responsibility to free element and element->key
+
+/* it's the caller's responsibility to free any associated memory allocations */
 int SortedList_delete(SortedListElement_t *element)
 {
-	if ((element->prev)->next != element || (element->next)->prev != element)
-		return 1;  // corrupted prev/next pointers
+	SortedListElement_t *prev_el = element->prev;
+	SortedListElement_t *next_el = element->next;
 
-	(element->prev)->next = (element->next);
-	(element->next)->prev = (element->prev);
+	if (prev_el->next != element || next_el->prev != element)
+		return 1;
+
+	if (opt_yield & DELETE_YIELD)
+		pthread_yield();
+
+	prev_el->next = next_el;
+	next_el->prev = prev_el;
+
+	element->prev = NULL;
+	element->next = NULL;
+
 	return 0;
 }
 
+
 SortedListElement_t *SortedList_lookup(SortedList_t *list, const char *key)
 {
-	SortedListElement_t *cur = list->next;
+	SortedListElement_t *el = list->next;
 
-	while ((cur->key != NULL) && (strcmp(key, cur->key) != 0))
-		cur = cur->next;
+	while (el != list) {
+		if (strcmp(key, el->key) == 0)
+			return el;
 
-	if (cur->key == NULL) {
-		return NULL;
-	} else {
-		return cur;
+		if (opt_yield & SEARCH_YIELD)
+			pthread_yield();
+
+		el = el->next;
 	}
+
+	return NULL;
 }
 
-// TODO: check prev/next pointers while traversing list.
+
 int SortedList_length(SortedList_t *list)
 {
 	int count = 0;
-	SortedListElement_t *cur = list->next;
+	SortedListElement_t *el = list->next;
 
-	while (cur->key != NULL) {
-		cur = cur->next;
+	while (el != list) {
+		if (el->prev->next != el || el->next->prev != el)
+			return -1;
+
+		if (opt_yield & SEARCH_YIELD)
+			pthread_yield();
+
+		el = el->next;
 		count++;
 	}
 

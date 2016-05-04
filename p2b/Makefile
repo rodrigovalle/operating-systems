@@ -14,16 +14,16 @@ $(TARGET): $(OBJECTS)
 %.o: %.c
 	$(CC) -c $< $(CFLAGS)
 
-test: tests.c SortedList.c
+test: tests/tests.c SortedList.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
 check: test
 	./test --color=never
 
 clean:
-	rm -f $(TARGET) *.o test
+	rm -f $(TARGET) test *.o
 
 dist: clean
-	tar cvzf lab2b-104494120.tar.gz *.c README Makefile
+	tar cvzf lab2b-104494120.tar.gz *.c *.h README Makefile *.png
 
 .PHONY: check clean dist check

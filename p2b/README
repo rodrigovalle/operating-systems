@@ -1,0 +1,74 @@
+Rodrigo Valle
+104 494 120
+
+
+SLIP DAYS
+---------
+One slip day was used to complete this project.
+
+
+NOTES
+-----
+- My implementation uses a circularly linked lists, so an empty list must be
+  initialized by linking the next and prev pointers to itself, and setting the
+  key pointer to NULL.
+- each element's key is a 5 character string
+- strcmp() was used for ordering keys
+- the first graph for this project was generated on my personal computer
+
+
+NOTES ON GRAPH 2
+----------------
+- the second graph was generated on SEASNET via a script, and as such shows
+  significantly more noise. I tried many times but was unable to get a better
+  looking graph.
+- you can see the spin lock line jumping up and down, but the mutex line stays
+  relatively consistent.
+- this graph was corrected by dividing each time by 
+      (number of threads * number of iterations per thread)
+
+
+YIELDS
+------
+Making the program fail by setting a number of threads greater than 1 and any of
+the yield options was fairly easy, with pretty much every combination of yields
+failing consistently for more than 100 iterations (for any number of threads).
+
+Setting --sync=[ms] happily eliminates any issues with segmentation faulting.
+
+
+QUESTIONS
+---------
+
+2B.1A: Explain the variation in time per operation vs the number of iterations.
+Our graph looks different from the graph encountered in project 2A because now
+the runtime complexity of our critical section is O(n). Before, the add()
+function could run in O(1) time. This means that as the number of iterations
+was increased the, average time per operation approached the amount of time it
+took to execute the add() function once.
+
+Now, with a linked list, the amount of time it takes to perform a search,
+lookup, or get the list's length increases as a function of the list's length.
+Thus, after the initial drop-off in our graph which is due to the overhead cost
+of creating threads, the time it takes for the program to complete grows
+linearly with the length of the list (more iterations means more list elements
+in the global list).
+
+
+2B.1B: How would you propose to correct for this effect?
+Correcting for this effect is, mathematically speaking, quite simple. All we
+have to do to obtain a graph like the one seen in project 2A is divide the
+amount of time each run took by the number of items in the list (or anything
+else proportional to the size of the list).
+
+
+2B.2A: Compare the variation in time per protected operation vs the number of
+threads in project 2B and in project 2A. Explain the difference.
+The list functions' critical sections are much larger than the add function's
+critical section from project 2a. The lock for accessing the critical section is
+also held for a longer amount of time in the list manipulation functions than
+in the add function. This means that there's a higher chance that, when a
+thread goes to grab the lock, another thread is already holding the lock and
+must wait. Because the critical section is locked for a much longer amount of
+time when operating on linked lists, threads will block more often, introducing
+more overhead, and decreasing parallelism.
