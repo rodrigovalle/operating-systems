@@ -1,0 +1,32 @@
+Rodrigo Valle
+104 494 120
+
+
+2C.1A
+	Explain the change in performance of the synchronized methods as a function
+	of the number of threads per list.
+2C.1B
+	Explain why threads per list is a more interesting number than threads (for
+	this particular measurement)
+
+
+2C.2A
+	Compare the time per operation when increasing the lists value. Explain your
+	observations.
+2C.2B
+	Compare the time per operation between mutex and spinlock. Explain your
+	observations.
+
+
+2C.3A
+	Why must the mutex be held when pthread_cond_wait is called?
+2C.3B
+	Why must the mutex be released when the waiting thread is blocked?
+2C.3C
+	Why must the mutex be reacquired when the calling thread resumes?
+2C.3D
+	Why must mutex release be done inside of pthread_cond_wait? Why can't the
+	caller simply release the mutex before calling pthread_cond_wait?
+2C.3E
+	Can pthread_cond_wait be implemented in user mode? If so, how? If it can
+	only be implemented by a system call, explain why?
