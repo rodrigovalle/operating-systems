@@ -17,7 +17,8 @@
  *                         http://wiki.osdev.org/Ext2
  */
 
-enum outfile {  /* we use this enum to index the filenames array */
+/* we use this enum to index the filenames array */
+enum outfile {
     SUPER_CSV = 0,
     GROUP_CSV,
     BITMAP_CSV,
@@ -27,8 +28,9 @@ enum outfile {  /* we use this enum to index the filenames array */
     N_FILES
 };
 
-FILE *csv_files[N_FILES];      /* our six output files */
-char *filenames[N_FILES] = {   /* their names */
+/* our six output files and their names */
+FILE *csv_files[N_FILES];
+char *filenames[N_FILES] = {
     "super.csv",
     "group.csv",
     "bitmap.csv",
@@ -37,28 +39,38 @@ char *filenames[N_FILES] = {   /* their names */
     "indirect.csv",
 };
 
-enum output_fields { /* the number of fields each csv contains */
-    SUPER_FIELDS        = 9,
-    GROUP_FIELDS        = 7,
-    BITMAP_FIELDS       = 2,
-    INODE_FIELDS        = 26,
-    DIRECTORY_FIELDS    = 6,
-    INDIRECT_FIELDS     = 3
+/* the number of fields each csv contains */
+enum output_fields {
+    SUPER_FIELDS      =   9,
+    GROUP_FIELDS      =   7,
+    BITMAP_FIELDS     =   2,
+    INODE_FIELDS      =  26,
+    DIRECTORY_FIELDS  =   6,
+    INDIRECT_FIELDS   =   3
 };
 
+/* specifies a single formatted csv entry
+ *
+ *   *fmt_str  a printf format string
+ *   data      what will be printed/formatted by printf
+ */
 struct fmt_entry {
     const char *fmt_str;
     uint32_t    data;
 };
 
-// these definitions taken directly from <ext2fs/ext2_fs.h>
+
+/* EXT2 DEFINITIONS
+ * these definitions taken directly from <ext2fs/ext2_fs.h>
+ */
 #define SUPERBLOCK_OFFSET 1024  // bytes from beginning of volume to superblock
 #define SUPERBLOCK_SIZE   1024
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
+ *
  * NOTE: don't allocate this on the stack, it's too big and will cause a
- * stack overflow/segfault. Use malloc instead.
+ * stack overflow/segfault. Use malloc instead (or allocate statically).
  */
 struct ext2_super_block {
     uint32_t   s_inodes_count;         /* Inodes count */
@@ -87,6 +99,73 @@ struct ext2_super_block {
     uint16_t   s_def_resuid;           /* Default uid for reserved blocks */
     uint16_t   s_def_resgid;           /* Default gid for reserved blocks */
 } superblock;
+
+/*
+ * Structure of a blocks group descriptor.
+ */
+struct ext2_group_desc
+{
+	uint32_t	bg_block_bitmap;	    /* Blocks bitmap block */
+	uint32_t	bg_inode_bitmap;	    /* Inodes bitmap block */
+	uint32_t	bg_inode_table;         /* Inodes table block */
+	uint16_t	bg_free_blocks_count;	/* Free blocks count */
+	uint16_t	bg_free_inodes_count;	/* Free inodes count */
+	uint16_t	bg_used_dirs_count;	    /* Directories count */
+	uint16_t	bg_flags;
+	uint32_t	bg_exclude_bitmap_lo;	/* Exclude bitmap for snapshots */
+	uint16_t	bg_block_bitmap_csum_lo;/* crc32c(s_uuid+grp_num+bitmap) LSB */
+	uint16_t	bg_inode_bitmap_csum_lo;/* crc32c(s_uuid+grp_num+bitmap) LSB */
+	uint16_t	bg_itable_unused;	    /* Unused inodes count */
+	uint16_t	bg_checksum;		    /* crc16(s_uuid+group_num+group_desc)*/
+}
+
+/*                                                                              
+ * Structure of an inode on the disk                                            
+ */                                                                             
+struct ext2_inode {                                                             
+    uint16_t   i_mode;          /* File mode */                                         
+    uint16_t   i_uid;           /* Low 16 bits of Owner Uid */                          
+    uint32_t   i_size;          /* Size in bytes */                                     
+    uint32_t   i_atime;         /* Access time */                                       
+    uint32_t   i_ctime;         /* Inode change time */                                 
+    uint32_t   i_mtime;         /* Modification time */                                 
+    uint32_t   i_dtime;         /* Deletion Time */                                     
+    uint16_t   i_gid;           /* Low 16 bits of Group Id */                           
+    uint16_t   i_links_count;   /* Links count */                                   
+    uint32_t   i_blocks;        /* Blocks count */                                      
+    uint32_t   i_flags;         /* File flags */                                        
+    union {                                                                     
+        struct {                                                                
+            uint32_t   l_i_version; /* was l_i_reserved1 */                        
+        } linux1;                                                               
+        struct {                                                                
+            uint32_t  h_i_translator;                                              
+        } hurd1;                                                                
+    } osd1;         /* OS dependent 1 */                                    
+    uint32_t   i_block[EXT2_N_BLOCKS];  /* Pointers to blocks */                     
+    uint32_t   i_generation;            /* File version (for NFS) */                        
+    uint32_t   i_file_acl;              /* File ACL */                                          
+    uint32_t   i_size_high;             /* Formerly i_dir_acl, directory ACL */             
+    uint32_t   i_faddr;                 /* Fragment address */                                  
+    union {                                                                     
+        struct {                                                                
+            uint16_t   l_i_blocks_hi;                                              
+            uint16_t   l_i_file_acl_high;                                          
+            uint16_t   l_i_uid_high;    /* these 2 fields    */                     
+            uint16_t   l_i_gid_high;    /* were reserved2[0] */                     
+            uint16_t   l_i_checksum_lo; /* crc32c(uuid+inum+inode) */              
+            uint16_t   l_i_reserved;                                               
+        } linux2;                                                               
+        struct {                                                                
+            uint8_t    h_i_frag;        /* Fragment number */                           
+            uint8_t    h_i_fsize;       /* Fragment size */                             
+            uint16_t   h_i_mode_high;                                              
+            uint16_t   h_i_uid_high;                                               
+            uint16_t   h_i_gid_high;                                               
+            uint32_t   h_i_author;                                                 
+        } hurd2;                                                                
+    } osd2;             /* OS dependent 2 */                                    
+};
 
 /* Populates the csv_files array with references to appropriately named and
  * newly created output files.
@@ -159,6 +238,8 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
     return bytes_read;
 }
 
+/* Parse the superblock at 1024 bytes in, write information to super.csv
+ */
 void superblock_stat(int imgfd)
 {
     ssize_t s;
@@ -167,6 +248,7 @@ void superblock_stat(int imgfd)
     s = pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
     assert(s == SUPERBLOCK_SIZE);
 
+    // format entries and print
     struct fmt_entry superblock_csv[] = {
         {"%x", superblock.s_magic},
         {"%u", superblock.s_inodes_count},
@@ -178,8 +260,11 @@ void superblock_stat(int imgfd)
         {"%u", superblock.s_clusters_per_group},
         {"%u", superblock.s_first_data_block},
     };
-
     write_csv(SUPER_CSV, superblock_csv, SUPER_FIELDS);
+}
+
+void groupdescriptor_stat(int imgfd)
+{
 }
 
 int main(int argc, char *argv[])
