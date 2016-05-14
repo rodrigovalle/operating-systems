@@ -38,17 +38,17 @@ char *filenames[N_FILES] = {   /* their names */
 };
 
 enum output_fields { /* the number of fields each csv contains */
-    SUPER_FIELDS = 9,
-    GROUP_FIELDS = 7,
-    BITMAP_FIELDS = 2,
-    INODE_FIELDS = 26,
-    DIRECTORY_FIELDS = 6,
-    INDIRECT_FIELDS = 3
+    SUPER_FIELDS        = 9,
+    GROUP_FIELDS        = 7,
+    BITMAP_FIELDS       = 2,
+    INODE_FIELDS        = 26,
+    DIRECTORY_FIELDS    = 6,
+    INDIRECT_FIELDS     = 3
 };
 
-struct formatted_entry {
-    char *format_str;
-    uint32_t data;
+struct fmt_entry {
+    const char *fmt_str;
+    uint32_t    data;
 };
 
 // these definitions taken directly from <ext2fs/ext2_fs.h>
@@ -86,21 +86,28 @@ struct ext2_super_block {
     uint32_t   s_rev_level;            /* Revision level */
     uint16_t   s_def_resuid;           /* Default uid for reserved blocks */
     uint16_t   s_def_resgid;           /* Default gid for reserved blocks */
-};
-/* TODO: might declare a global superblock if we need it after we write 
- * superblock.csv
- */
+} superblock;
 
 /* Populates the csv_files array with references to appropriately named and
  * newly created output files.
  */
 static void open_csv() {
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < N_FILES; i++) {
         csv_files[i] = fopen(filenames[i], "w");
         if (csv_files[i] == NULL)
             perror("create csv file");
     }
 }
+
+/* Closes all csv files. Call after we're finished writing.
+ */
+static void close_csv()
+{
+    for (int i = 0; i < N_FILES; i++) {
+        fclose(csv_files[i]);
+    }
+}
+
 
 /* Writes an array of entries out to the corresponding csv file in the
  * appropriate format. Make sure to call open_files() first.
@@ -108,11 +115,11 @@ static void open_csv() {
  *  - entry and format must both have length n.
  *  - you can only specify one "type" in the format string. eg %d, %x, etc.
  */
-static void write_csv(int file, const struct formatted_entry entry[], int n)
+static void write_csv(int file, const struct fmt_entry *entries, int n)
 {
     int i = 0;
     while (1) {
-        fprintf(csv_files[file], entry[i].format_str, entry[i].data);
+        fprintf(csv_files[file], entries[i].fmt_str, entries[i].data);
         i++;
         if (i == n)
             break;
@@ -152,31 +159,27 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
     return bytes_read;
 }
 
-void superblock(int imgfd)
+void superblock_stat(int imgfd)
 {
     ssize_t s;
-    struct ext2_super_block *superblock;
 
     // read in the superblock
-    superblock = malloc(sizeof(struct ext2_super_block));
-    if (superblock == NULL)
-        perror("malloc");
-    s = pread_all(imgfd, superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
+    s = pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
     assert(s == SUPERBLOCK_SIZE);
 
-    struct formatted_entry superblock_csv[] = {
-        {"%x", superblock->s_magic},
-        {"%u", superblock->s_inodes_count},
-        {"%u", superblock->s_blocks_count},
-        {"%u", superblock->s_log_block_size},
-        {"%u", superblock->s_log_cluster_size},
-        {"%u", superblock->s_blocks_per_group},
-        {"%u", superblock->s_inodes_per_group},
-        {"%u", superblock->s_clusters_per_group},
-        {"%u", superblock->s_first_data_block},
+    struct fmt_entry superblock_csv[] = {
+        {"%x", superblock.s_magic},
+        {"%u", superblock.s_inodes_count},
+        {"%u", superblock.s_blocks_count},
+        {"%u", superblock.s_log_block_size},
+        {"%u", superblock.s_log_cluster_size},
+        {"%u", superblock.s_blocks_per_group},
+        {"%u", superblock.s_inodes_per_group},
+        {"%u", superblock.s_clusters_per_group},
+        {"%u", superblock.s_first_data_block},
     };
 
-    write_csv(imgfd, superblock_csv, SUPER_FIELDS);
+    write_csv(SUPER_CSV, superblock_csv, SUPER_FIELDS);
 }
 
 int main(int argc, char *argv[])
@@ -195,5 +198,6 @@ int main(int argc, char *argv[])
     if (imgfd == -1)
         perror("opening image");
 
-    superblock(imgfd);
+    superblock_stat(imgfd);
+    close_csv();
 }
