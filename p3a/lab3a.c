@@ -63,8 +63,8 @@ struct fmt_entry {
 /* EXT2 DEFINITIONS
  * these definitions taken directly from <ext2fs/ext2_fs.h>
  */
-#define SUPERBLOCK_OFFSET 1024  // bytes from beginning of volume to superblock
-#define SUPERBLOCK_SIZE   1024
+#define SUPERBLOCK_OFFSET   1024
+#define SUPERBLOCK_SIZE     1024
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -80,9 +80,9 @@ struct ext2_super_block {
     uint32_t   s_free_inodes_count;    /* Free inodes count */
     uint32_t   s_first_data_block;     /* First data block */
     uint32_t   s_log_block_size;       /* Block size*/
-    uint32_t   s_log_cluster_size;     /* Allocation cluster/fragment size */
+    uint32_t   s_log_frag_size;        /* Allocation cluster/fragment size */
     uint32_t   s_blocks_per_group;     /* Blocks per group */
-    uint32_t   s_clusters_per_group;   /* # Fragments per group */
+    uint32_t   s_frags_per_group;      /* # Fragments per group */
     uint32_t   s_inodes_per_group;     /* # Inodes per group */
     uint32_t   s_mtime;                /* Mount time */
     uint32_t   s_wtime;                /* Write time */
@@ -117,55 +117,56 @@ struct ext2_group_desc
 	uint16_t	bg_inode_bitmap_csum_lo;/* crc32c(s_uuid+grp_num+bitmap) LSB */
 	uint16_t	bg_itable_unused;	    /* Unused inodes count */
 	uint16_t	bg_checksum;		    /* crc16(s_uuid+group_num+group_desc)*/
-}
+};
 
 /*                                                                              
  * Structure of an inode on the disk                                            
  */                                                                             
-struct ext2_inode {                                                             
-    uint16_t   i_mode;          /* File mode */                                         
-    uint16_t   i_uid;           /* Low 16 bits of Owner Uid */                          
-    uint32_t   i_size;          /* Size in bytes */                                     
-    uint32_t   i_atime;         /* Access time */                                       
-    uint32_t   i_ctime;         /* Inode change time */                                 
-    uint32_t   i_mtime;         /* Modification time */                                 
-    uint32_t   i_dtime;         /* Deletion Time */                                     
-    uint16_t   i_gid;           /* Low 16 bits of Group Id */                           
-    uint16_t   i_links_count;   /* Links count */                                   
-    uint32_t   i_blocks;        /* Blocks count */                                      
-    uint32_t   i_flags;         /* File flags */                                        
-    union {                                                                     
-        struct {                                                                
-            uint32_t   l_i_version; /* was l_i_reserved1 */                        
-        } linux1;                                                               
-        struct {                                                                
-            uint32_t  h_i_translator;                                              
-        } hurd1;                                                                
-    } osd1;         /* OS dependent 1 */                                    
-    uint32_t   i_block[EXT2_N_BLOCKS];  /* Pointers to blocks */                     
-    uint32_t   i_generation;            /* File version (for NFS) */                        
-    uint32_t   i_file_acl;              /* File ACL */                                          
-    uint32_t   i_size_high;             /* Formerly i_dir_acl, directory ACL */             
-    uint32_t   i_faddr;                 /* Fragment address */                                  
-    union {                                                                     
-        struct {                                                                
-            uint16_t   l_i_blocks_hi;                                              
-            uint16_t   l_i_file_acl_high;                                          
-            uint16_t   l_i_uid_high;    /* these 2 fields    */                     
-            uint16_t   l_i_gid_high;    /* were reserved2[0] */                     
-            uint16_t   l_i_checksum_lo; /* crc32c(uuid+inum+inode) */              
-            uint16_t   l_i_reserved;                                               
-        } linux2;                                                               
-        struct {                                                                
-            uint8_t    h_i_frag;        /* Fragment number */                           
-            uint8_t    h_i_fsize;       /* Fragment size */                             
-            uint16_t   h_i_mode_high;                                              
-            uint16_t   h_i_uid_high;                                               
-            uint16_t   h_i_gid_high;                                               
-            uint32_t   h_i_author;                                                 
-        } hurd2;                                                                
-    } osd2;             /* OS dependent 2 */                                    
-};
+
+//struct ext2_inode {                                                             
+//    uint16_t   i_mode;          /* File mode */                                         
+//    uint16_t   i_uid;           /* Low 16 bits of Owner Uid */                          
+//    uint32_t   i_size;          /* Size in bytes */                                     
+//    uint32_t   i_atime;         /* Access time */                                       
+//    uint32_t   i_ctime;         /* Inode change time */                                 
+//    uint32_t   i_mtime;         /* Modification time */                                 
+//    uint32_t   i_dtime;         /* Deletion Time */                                     
+//    uint16_t   i_gid;           /* Low 16 bits of Group Id */                           
+//    uint16_t   i_links_count;   /* Links count */                                   
+//    uint32_t   i_blocks;        /* Blocks count */                                      
+//    uint32_t   i_flags;         /* File flags */                                        
+//    union {                                                                     
+//        struct {                                                                
+//            uint32_t   l_i_version; /* was l_i_reserved1 */                        
+//        } linux1;                                                               
+//        struct {                                                                
+//            uint32_t  h_i_translator;                                              
+//        } hurd1;                                                                
+//    } osd1;         /* OS dependent 1 */                                    
+//    uint32_t   i_block[EXT2_N_BLOCKS];  /* Pointers to blocks */                     
+//    uint32_t   i_generation;            /* File version (for NFS) */                        
+//    uint32_t   i_file_acl;              /* File ACL */                                          
+//    uint32_t   i_size_high;             /* Formerly i_dir_acl, directory ACL */             
+//    uint32_t   i_faddr;                 /* Fragment address */                                  
+//    union {                                                                     
+//        struct {                                                                
+//            uint16_t   l_i_blocks_hi;                                              
+//            uint16_t   l_i_file_acl_high;                                          
+//            uint16_t   l_i_uid_high;    /* these 2 fields    */                     
+//            uint16_t   l_i_gid_high;    /* were reserved2[0] */                     
+//            uint16_t   l_i_checksum_lo; /* crc32c(uuid+inum+inode) */              
+//            uint16_t   l_i_reserved;                                               
+//        } linux2;                                                               
+//        struct {                                                                
+//            uint8_t    h_i_frag;        /* Fragment number */                           
+//            uint8_t    h_i_fsize;       /* Fragment size */                             
+//            uint16_t   h_i_mode_high;                                              
+//            uint16_t   h_i_uid_high;                                               
+//            uint16_t   h_i_gid_high;                                               
+//            uint32_t   h_i_author;                                                 
+//        } hurd2;                                                                
+//    } osd2;             /* OS dependent 2 */                                    
+//};
 
 /* Populates the csv_files array with references to appropriately named and
  * newly created output files.
@@ -248,16 +249,24 @@ void superblock_stat(int imgfd)
     s = pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
     assert(s == SUPERBLOCK_SIZE);
 
+    // some logic for the fragment size taken from the documentation
+    uint32_t frag_size = superblock.s_log_frag_size;
+
+    if (frag_size > 0)
+        frag_size = 1024 << frag_size;
+    else
+        frag_size = 1024 >> -frag_size;
+
     // format entries and print
     struct fmt_entry superblock_csv[] = {
         {"%x", superblock.s_magic},
         {"%u", superblock.s_inodes_count},
         {"%u", superblock.s_blocks_count},
-        {"%u", superblock.s_log_block_size},
-        {"%u", superblock.s_log_cluster_size},
+        {"%u", 1024 << superblock.s_log_block_size},   // gives 0
+        {"%u", frag_size}, // gives 0
         {"%u", superblock.s_blocks_per_group},
         {"%u", superblock.s_inodes_per_group},
-        {"%u", superblock.s_clusters_per_group},
+        {"%u", superblock.s_frags_per_group},
         {"%u", superblock.s_first_data_block},
     };
     write_csv(SUPER_CSV, superblock_csv, SUPER_FIELDS);
@@ -265,6 +274,7 @@ void superblock_stat(int imgfd)
 
 void groupdescriptor_stat(int imgfd)
 {
+    ;
 }
 
 int main(int argc, char *argv[])
