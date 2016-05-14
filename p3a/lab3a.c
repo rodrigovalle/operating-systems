@@ -7,7 +7,6 @@
 #include <sys/mman.h>
 
 #include <assert.h>  //for debug
-
 /* NOTE: #include <ext2fs/ext2_fs.h>
  * not allowed according to Prof. Kampe, but contains a lot of important
  * details about the ext2 file system, so I've read through it
@@ -65,6 +64,7 @@ struct fmt_entry {
  */
 #define SUPERBLOCK_OFFSET   1024
 #define SUPERBLOCK_SIZE     1024
+#define EXT2_BLOCK_SIZE(x)  ((1024) << x)
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -205,6 +205,7 @@ static void write_csv(int file, const struct fmt_entry *entries, int n)
             break;
         fprintf(csv_files[file], ",");
     }
+    fprintf(csv_files[file], "\n");
 }
 
 /* pread() is a tricky bastard and sometimes doesn't read everything in you ask
@@ -252,29 +253,66 @@ void superblock_stat(int imgfd)
     // some logic for the fragment size taken from the documentation
     uint32_t frag_size = superblock.s_log_frag_size;
 
+    // TODO: note, this is always true
     if (frag_size > 0)
         frag_size = 1024 << frag_size;
     else
         frag_size = 1024 >> -frag_size;
 
     // format entries and print
-    struct fmt_entry superblock_csv[] = {
+    struct fmt_entry superblock_info[SUPER_FIELDS] = {
         {"%x", superblock.s_magic},
         {"%u", superblock.s_inodes_count},
         {"%u", superblock.s_blocks_count},
-        {"%u", 1024 << superblock.s_log_block_size},   // gives 0
-        {"%u", frag_size}, // gives 0
+        {"%u", EXT2_BLOCK_SIZE(superblock.s_log_block_size)},
+        {"%u", frag_size},
         {"%u", superblock.s_blocks_per_group},
         {"%u", superblock.s_inodes_per_group},
         {"%u", superblock.s_frags_per_group},
         {"%u", superblock.s_first_data_block},
     };
-    write_csv(SUPER_CSV, superblock_csv, SUPER_FIELDS);
+    write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
-void groupdescriptor_stat(int imgfd)
+/* Make sure to call superblock_stat to initialize the superblock global before
+ * calling this function.
+ */
+void groupdesc_stat(int imgfd)
 {
-    ;
+    // get some information from the superblock
+    uint32_t total_n_blocks = superblock.s_blocks_count;
+    uint32_t blocks_per_group = superblock.s_blocks_per_group;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
+
+    // group descriptor is in the block immediately following the superblock
+    uint64_t groupdesc_off = SUPERBLOCK_OFFSET + blocksize;
+
+    // this is the number of block groups (+1 to include the last block group
+    // which might not be full
+    uint32_t n_block_groups = total_n_blocks / blocks_per_group + 1;
+
+    struct ext2_group_desc blockgroup;
+    for (uint32_t i = 0; i < n_block_groups; i++) {
+        pread_all(imgfd, &blockgroup, sizeof(blockgroup), groupdesc_off);
+        uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
+
+        if (i == n_block_groups - 1) {
+            n_blocks_for_this_group = total_n_blocks % blocks_per_group;
+        }
+
+        // format info and write to group.csv
+        struct fmt_entry blockgroup_info[GROUP_FIELDS] = {
+            {"%u", n_blocks_for_this_group},
+            {"%u", blockgroup.bg_free_blocks_count},
+            {"%u", blockgroup.bg_free_inodes_count},
+            {"%u", blockgroup.bg_used_dirs_count},
+            {"%x", blockgroup.bg_inode_bitmap},
+            {"%x", blockgroup.bg_block_bitmap},
+            {"%x", blockgroup.bg_inode_table}
+        };
+        write_csv(GROUP_CSV, blockgroup_info, GROUP_FIELDS);
+        groupdesc_off += sizeof(blockgroup);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -294,5 +332,6 @@ int main(int argc, char *argv[])
         perror("opening image");
 
     superblock_stat(imgfd);
+    groupdesc_stat(imgfd);
     close_csv();
 }
