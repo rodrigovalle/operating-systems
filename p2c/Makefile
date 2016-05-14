@@ -24,6 +24,6 @@ clean:
 	rm -f $(TARGET) test *.o
 
 dist: clean
-	tar cvzf lab2b-104494120.tar.gz *.c *.h README Makefile *.png
+	tar cvzf lab2c-104494120.tar.gz *.c *.h README Makefile *.png
 
 .PHONY: check clean dist check

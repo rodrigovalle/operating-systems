@@ -1,32 +1,225 @@
 Rodrigo Valle
 104 494 120
 
+Files
+-----
+Makefile - default target compiles everything
+README - you're reading this
+lab2c.c - source code (with comments!)
+graph1.png - the requested graph
+SortedList.h - SortedList header
+SortedList.c - SortedList implementation.
 
-2C.1A
-	Explain the change in performance of the synchronized methods as a function
+Notes
+-----
+default make target does not compile with -pg, spec didn't say anything about
+having to change this so I didn't.
+
+Profiling with gprof
+--------------------
+I ran my lab2c with the following options:
+    --lists=1
+    --threads=1
+    --iterations=50000
+
+A truncated version of gprof's report is as follows:
+    Each sample counts as 0.01 seconds.
+      %   cumulative   self              self     total           
+     time   seconds   seconds    calls  us/call  us/call  name    
+     50.82      1.41     1.41    50000    28.26    28.26  SortedList_insert
+     49.38      2.79     1.37    50000    27.46    27.46  SortedList_lookup
+      0.00      2.79     0.00   100001     0.00     0.00  lock_sublist
+      0.00      2.79     0.00   100001     0.00     0.00  unlock_sublist
+      0.00      2.79     0.00   100000     0.00     0.00  hash_element
+      0.00      2.79     0.00    50000     0.00     0.00  SortedList_delete
+      0.00      2.79     0.00    50000     0.00     0.00  element_set_rand_key
+      0.00      2.79     0.00        1     0.00     0.00  SortedList_length
+      0.00      2.79     0.00        1     0.00     0.00  destroy_element_pile
+      0.00      2.79     0.00        1     0.00     0.00  free_sublists
+      0.00      2.79     0.00        1     0.00     0.00  init_sublists
+      0.00      2.79     0.00        1     0.00     0.00  list_init
+      0.00      2.79     0.00        1     0.00     0.00  make_element_pile
+      0.00      2.79     0.00        1     0.00     0.00  parse_opts
+      0.00      2.79     0.00        1     0.00     0.00  print_stats
+
+
+We can observe from the gprof output that
+    - the program spends most of its time runing the SortedList_insert
+      function, and the SortedList_lookup function is a close second.
+    - the other functions account for close to zero percent of the runtime
+      either because they're generally fast, ie, they execute in O(1) time, or
+      they're only called once       
+    - we see that SortedList_insert, SortedList_lookup, SortedList_length, and
+      SortedList_delete are each called 5000 times
+    - the lock and unlock_sublist functions, which do nothing for without a
+      synchronization option, and hash function are called about 100000 times.
+    - all other intialization functions are only called once
+    - we spent 1.41 seconds in SortedList_insert and 1.37 seconds in
+      SortedList_lookup. All other function timings are irrelevant because they
+      executed much faster than these two functions (or were only called once).
+
+Now we run lab2c with 8 threads, 4 lists, and 10000 iterations, along with
+mutex synchronization, and we observe that
+     %   cumulative   self              self     total           
+     time   seconds   seconds    calls  us/call  us/call  name    
+     49.28      1.20     1.20    78728    15.27    15.27  SortedList_insert
+     47.23      2.35     1.15    78640    14.65    14.65  SortedList_lookup
+      1.64      2.39     0.04   157805     0.25     0.25  lock_sublist
+      0.82      2.41     0.02       32   626.29   626.29  SortedList_length
+      0.41      2.42     0.01   157277     0.06     0.06  hash_element
+      0.41      2.44     0.01                             main
+      0.41      2.45     0.01                             t_routine
+      0.00      2.45     0.00   156911     0.00     0.00  unlock_sublist
+      ...
+
+    - we're still spending most of our time performing list inserts and list
+      lookups
+    - but now that there's more contention for lists among the threads, we see
+      that the lock_sublist function has started to account for a more
+      significant percentage of our runtime. That's because we're spending more
+      time waiting for sublists to unlock than we were without synchronization
+      and multiple threads.
+    - unlock_sublist is still pretty insignificant compared to the other
+      functions listed here -- it doesn't have to wait for anything!
+
+With 8 threads, 16 lists, and 10000 iterations, for the most part we observe
+similar behavior as with 4 lists, except now the lock_sublist() function
+accounts for less overall runtime (0.00% instead of 1.64%) because there's
+reduced lock contention among threads with more lists. Since we reduced the
+number of iterations, we call each function a smaller number of times.
+
+For a range of list values using spinlocks instead of mutexes, we can make the
+same observations about the lock_sublist() function, but otherwise the results
+(including the number of times that each function is called and the runtime
+percentage) are virtually identical to the synchronization with mutex output.
+
+
+Questions
+---------
+2C.1
+A:  Explain the change in performance of the synchronized methods as a function
 	of the number of threads per list.
-2C.1B
-	Explain why threads per list is a more interesting number than threads (for
-	this particular measurement)
+
+    When there are fewer threads per list, there is a significant performance
+    increase. This is because there is a decrease in the amount of contention
+    over any paricular list -- in other words, there's a much smaller chance
+    that a thread will attempt to obtain a lock that's already held. Since
+    threads block while waiting for a lock to be released, this directly causes
+    an increase in performance since any particular thread will spend less time
+    blocking.
+
+    On the other hand, if there are more threads than lists, we see a decrease
+    in performance since now threads are more likely to try and "share" a list,
+    which decreases parallelism since they must synchronize their actions when
+    they do so. As one thread blocks while the other works, we find that the
+    list modification functions spend more time waiting for a list's lock than
+    they would with more available lists.
 
 
-2C.2A
-	Compare the time per operation when increasing the lists value. Explain your
+B:  Explain why threads per list is a more interesting number than threads (for
+	this particular measurement).
+
+    The ratio of threads per list is more interesting to us because it provides
+    us with a way to measure the amount of contention that any particular
+    thread experiences while accessing lists. A higher ratio means more
+    contention between threads, and a lower ratio means less contention. Since
+    contention is such a large factor in the performance of a multithreaded
+    application, this ratio can also be used to describe the performance of our
+    program.
+
+
+
+2C.2
+A:  Compare the time per operation when increasing the lists value. Explain
+    your observations.
+
+    Starting with fewer lists than threads, we observe that time per operation
+    is incredibly high. This is for the reasons that were explained in question
+    2C.1, namely, that there are more threads than lists and so its very likely
+    that two threads will attempt to lock the same list, and one will end up
+    blocking until the other thread finishes its access.
+
+    As we increase the number of lists available to a constant number of
+    threads, we see a decrease in the time per operation. As we give the
+    threads more lists to operate on, it becomes less likely that any two
+    threads will attempt to access the same list at the same time, and thus
+    will reduce blocking, increase parallelism, and most importantly, increase
+    performance.
+
+
+B:  Compare the time per operation between mutex and spinlock. Explain your
 	observations.
-2C.2B
-	Compare the time per operation between mutex and spinlock. Explain your
-	observations.
+    
+    In general, from the graph that I created, the spin lock's performance per
+    operation appears to be slightly better than the mutex lock's performance.
 
 
-2C.3A
-	Why must the mutex be held when pthread_cond_wait is called?
-2C.3B
-	Why must the mutex be released when the waiting thread is blocked?
-2C.3C
-	Why must the mutex be reacquired when the calling thread resumes?
-2C.3D
-	Why must mutex release be done inside of pthread_cond_wait? Why can't the
+2C.3
+A:  Why must the mutex be held when pthread_cond_wait is called?
+
+    We must hold the mutex when pthread_cond_wait is called because there is a
+    critical section inbetween checking the value of the condition variable and
+    going to sleep. If another thread were to change the value of the condition
+    variable after we had checked it but before we went to sleep, we'd sleep
+    anyway thinking that we'd wake up when the condition variable changes. In
+    reality, we had already missed our wake up call before going to sleep, and
+    thus we'll never be woken up.
+
+
+B:  Why must the mutex be released when the waiting thread is blocked?
+
+    The mutex must be released when the waiting thread goes to sleep because
+    if the thread goes to sleep with the lock, there's no way for another
+    thread to signal the sleeping thread. The other thread would try to obtain
+    the lock in order to signal, but would fail and block waiting for the lock
+    to be released, halting the execution of our program in a deadlock.
+
+
+C:  Why must the mutex be reacquired when the calling thread resumes?
+
+    When the thread resumes, it's going to check for the change in program
+    state that it was waiting for, to make sure that it was woken up at the
+    appropriate time. When the thread performs this check, we wouldn't want
+    another thread to be able to change the program state while the original
+    thread is operating on it, otherwise we might end up in the same deadlock
+    situation as part A. That is, the thread might wake up, check the variable
+    to see that it was a spurious wakeup and try to go back to sleep, but if
+    we don't reacquire the lock another thread could signal before we sleep and
+    we'll miss our only wake up call, sleeping forever.
+
+
+D:  Why must mutex release be done inside of pthread_cond_wait? Why can't the
 	caller simply release the mutex before calling pthread_cond_wait?
-2C.3E
-	Can pthread_cond_wait be implemented in user mode? If so, how? If it can
+
+    Releasing the lock and going to sleep must happen atomically, and
+    pthread_cond_wait can guarantee that these two operations are executed one
+    right after the other, "all or none". An API that required the developer to
+    release the lock before calling pthread_cond_wait would indeed be flawed
+    because it does not guarantee that these actions are performed atomically,
+    and could cause problems if the condition variable is signaled after the 
+    mutex lock is released but before we go to sleep, as detailed in part A.
+    This critical section must be protected or the thread could put itself to
+    sleep and never wake up.
+
+
+E:  Can pthread_cond_wait be implemented in user mode? If so, how? If it can
 	only be implemented by a system call, explain why?
+
+    pthread_cond_wait can't be implemented in user mode, because we require
+    extra functionality available only to the kernel on most systems.
+
+    Essentially, we need a way to atomically release the lock and go to sleep,
+    and to do this we need help from the hardware. The kernel has the ability
+    to prevent preemtions, ensuring that a certain block of code executes
+    atomically, which is exactly what we need to use in order to write
+    pthread_cond_wait.
+
+    pthread_cond_wait could certainly be implemented via a syscall, passing
+    the address of the lock to the kernel along with the address of the
+    condition variable and allowing the kernel to wake up the calling thread
+    when the condition variable is set. The kernel could use its ability to
+    prevent preemption to execute the necessary unlock/sleep operation
+    atomically.
+    
+    I could be wrong, but I think pthread_cond_wait uses the futex systemcall
+    internally to implement pthread_cond_wait.
