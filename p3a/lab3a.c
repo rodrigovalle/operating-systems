@@ -284,21 +284,29 @@ void superblock_stat()
 
 uint32_t get_block_index(int byte_nr, int bit_nr, uint32_t group_i)
 {
-    uint32_t block_index_off = group_i * superblock.s_blocks_per_group;
-    return byte_nr*8 + bit_nr + superblock.s_first_data_block + block_index_off;
+    // calculate offsets local to the block group and globally for all groups
+    uint32_t local_off = byte_nr * 8 + bit_nr;
+    uint32_t global_off = group_i * superblock.s_blocks_per_group;
+
+    // add s_first_data_block offset, since the first block group may or may
+    // not contain the first (super) block.
+    return global_off + local_off + superblock.s_first_data_block;
 }
 
 uint32_t get_inode_number(int byte_nr, int bit_nr, uint32_t group_i)
 {
+    // calculate offsets local to the block group and globally for all groups
+    uint32_t local_off = byte_nr * 8 + bit_nr;
+    uint32_t global_off = group_i * superblock.s_inodes_per_group;
+
     // inodes are 1-indexed
-    uint32_t inode_nr_off = group_i * superblock.s_inodes_per_group + 1;
-    return byte_nr*8 + bit_nr + inode_nr_off;
+    return local_off + global_off + 1;
 }
 
 /* Writes out information about a block or inode bitmap. Called from within
  * groupdesc_stat() since it iterates through all blockgroup descriptors.
  */
-void bitmap_stat(uint32_t bitmap_id, uint32_t group_i, int bitmap_type)
+void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
     uint64_t bitmap_off = blocksize * bitmap_id;
@@ -310,22 +318,27 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_i, int bitmap_type)
     }
 
     pread_all(imgfd, bitmap, blocksize, bitmap_off); 
-    for (uint32_t byte_i = 0; byte_i < blocksize; byte_i++) {
-        uint8_t byte = bitmap[byte_i];
 
-        for (int bit_i = 0; bit_i < 8; bit_i++) {
-            if (!(byte & 0x01)) {
-                uint32_t index = bitmap_type ? get_inode_number(byte_i, bit_i, group_i) : get_block_index(byte_i, bit_i, group_i);
+    // iterate over the bits of each byte in the bitmap
+    // remember: ext2 stores bitmaps in little endian
+    for (uint32_t byte = 0; byte < blocksize; byte++) {
+        for (int bit = 0; bit < 8; bit++) {
+            if (!(bitmap[byte] & 0x01)) {  // empty bitmap entry
+                // bitmap type determines how to calculate the offset
+                uint32_t index = bitmap_type ?
+                    get_inode_number(byte, bit, group_index) :
+                    get_block_index(byte, bit, group_index);
+
                 struct fmt_entry bitmap_info[BITMAP_FIELDS] = {
                     {"%x", bitmap_id},
                     {"%u", index}
                 };
+
                 write_csv(BITMAP_CSV, bitmap_info, BITMAP_FIELDS);
+
+            } else if (bitmap_type == INODE_BITMAP) {
+                // lol just call the function for processing inodes
             }
-            /*else
-            {
-                inodelist<- node // put the bit into the inodelist
-            }*/
             byte >>= 1;
         }
     }
