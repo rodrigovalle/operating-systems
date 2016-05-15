@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 
 #include <assert.h>  //for debug
+
 /* NOTE: #include <ext2fs/ext2_fs.h>
  * not allowed according to Prof. Kampe, but contains a lot of important
  * details about the ext2 file system, so I've read through it
@@ -28,8 +29,8 @@ enum outfile {
 };
 
 /* our six output files and their names */
-FILE *csv_files[N_FILES];
-char *filenames[N_FILES] = {
+static FILE *csv_files[N_FILES];
+static char *filenames[N_FILES] = {
     "super.csv",
     "group.csv",
     "bitmap.csv",
@@ -58,13 +59,20 @@ struct fmt_entry {
     uint32_t    data;
 };
 
+// file descriptor reference to the open disk image we're analyzing
+static int imgfd = -1;
+
+/* These #defines are for bitmap_stat() */
+#define BLOCK_BITMAP    0
+#define INODE_BITMAP    1
+#define TOP_BIT(byte)   ((byte) & (0x08))
 
 /* EXT2 DEFINITIONS
  * these definitions taken directly from <ext2fs/ext2_fs.h>
  */
 #define SUPERBLOCK_OFFSET   1024
 #define SUPERBLOCK_SIZE     1024
-#define EXT2_BLOCK_SIZE(x)  ((1024) << x)
+#define EXT2_BLOCK_SIZE(x)  ((1024) << (x))
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -242,7 +250,7 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
 
 /* Parse the superblock at 1024 bytes in, write information to super.csv
  */
-void superblock_stat(int imgfd)
+void superblock_stat()
 {
     ssize_t s;
 
@@ -274,10 +282,48 @@ void superblock_stat(int imgfd)
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
+/* Writes out information about a block or inode bitmap. Called from within
+ * groupdesc_stat() since it iterates through all blockgroup descriptors.
+ */
+void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type)
+{
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
+    uint32_t thingies_per_group = bitmap_type ? superblock.s_inodes_per_group : superblock.s_blocks_per_group;
+    uint64_t bitmap_off = blocksize * bitmap_id;
+
+    uint8_t *bitmap = malloc(blocksize);
+    if (bitmap == NULL) {
+        perror("malloc failed");
+        exit(1);
+    }
+
+    pread_all(imgfd, bitmap, blocksize, bitmap_off); 
+    for (uint32_t byte_i = 0; byte_i < blocksize; byte_i++)
+    {
+        uint8_t byte = bitmap[byte_i];
+
+        for (int bit_i = 0; bit_i < 8; bit_i++) {
+            if (!(byte & 0x01)) {
+                uint32_t free_block_nr = (byte_i * 8 + bit_i + superblock.s_first_data_block) + cur_block_group * thingies_per_group;
+                struct fmt_entry bitmap_info[BITMAP_FIELDS] = {
+                    {"%x", bitmap_id},
+                    {"%u", free_block_nr}
+                };
+                write_csv(BITMAP_CSV, bitmap_info, BITMAP_FIELDS);
+            }
+            /*else
+            {
+                inodelist<- node // put the bit into the inodelist
+            }*/
+            byte >>= 1;
+        }
+    }
+}
+
 /* Make sure to call superblock_stat to initialize the superblock global before
  * calling this function.
  */
-void groupdesc_stat(int imgfd)
+void groupdesc_stat()
 {
     // get some information from the superblock
     uint32_t total_n_blocks = superblock.s_blocks_count;
@@ -288,7 +334,7 @@ void groupdesc_stat(int imgfd)
     uint64_t groupdesc_off = SUPERBLOCK_OFFSET + blocksize;
 
     // this is the number of block groups (+1 to include the last block group
-    // which might not be full
+    // which might not be full)
     uint32_t n_block_groups = total_n_blocks / blocks_per_group + 1;
 
     struct ext2_group_desc blockgroup;
@@ -311,44 +357,11 @@ void groupdesc_stat(int imgfd)
             {"%x", blockgroup.bg_inode_table}
         };
         write_csv(GROUP_CSV, blockgroup_info, GROUP_FIELDS);
+
+        // write bitmap info for this blockgroup
+        bitmap_stat(blockgroup.bg_block_bitmap, i, 0);
+        // bitmanp_stat(blockgroup.bg_inode_bitmap, i, 1);
         groupdesc_off += sizeof(blockgroup);
-    }
-}
-
-// bitmap_type is 0 for blocks and 1 for inodes
-void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type,
-                 int imgfd)
-{
-    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
-    uint32_t thingies_per_group = bitmap_type ? superblock.s_inodes_per_group : superblock.s_blocks_per_group;
-    uint64_t bitmap_off = blocksize * bitmap_id;
-
-    void *bitmap = malloc(blocksize);
-    if (bitmap == NULL) {
-        perror("malloc failed");
-        exit(1);
-    }
-
-    pread_all(imgfd, bitmap, blocksize, bitmap_off); 
-    for (int byte_i = 0; byte_i < blocksize; byte_i++)
-    {
-        uint8_t byte_i = bitmap[byte_i];
-        uint8_t topbit = 0x80;
-
-        for (int bit_i = 0; bit_i < 8; bit_i++) {
-            if (byte & topbit)
-            {
-                struct fmt_entry inode_info[BITMAP_FILEDS] = {
-                    {"%x", bitmap_id},
-                    {"%u", (byte_i * 8 + bit_i) + cur_block_group * thingies_per_group}
-                };
-            }
-            /*else
-            {
-                inodelist<- node // put the bit into the inodelist
-            }*/
-            byte <<= 1;
-        }
     }
 }
 
@@ -364,11 +377,11 @@ int main(int argc, char *argv[])
 
     // open the disk image
     char *filename = argv[1];
-    int imgfd = open(filename, O_RDONLY);
+    imgfd = open(filename, O_RDONLY);
     if (imgfd == -1)
         perror("opening image");
 
-    superblock_stat(imgfd);
-    groupdesc_stat(imgfd);
+    superblock_stat();
+    groupdesc_stat(); //also populates bitmap.csv
     close_csv();
 }
