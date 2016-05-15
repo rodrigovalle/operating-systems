@@ -320,6 +320,11 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type)
     }
 }
 
+uint32_t get_inode_number(uint32_t cur_block_group)
+{
+    return (cur_block_group * superblock.s_inodes_per_group);
+}
+
 /* Make sure to call superblock_stat to initialize the superblock global before
  * calling this function.
  */
