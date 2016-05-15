@@ -282,13 +282,25 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
+uint32_t get_block_index(int byte_nr, int bit_nr, uint32_t group_i)
+{
+    uint32_t block_index_off = group_i * superblock.s_blocks_per_group;
+    return byte_nr*8 + bit_nr + superblock.s_first_data_block + block_index_off;
+}
+
+uint32_t get_inode_number(int byte_nr, int bit_nr, uint32_t group_i)
+{
+    // inodes are 1-indexed
+    uint32_t inode_nr_off = group_i * superblock.s_inodes_per_group + 1;
+    return byte_nr*8 + bit_nr + inode_nr_off;
+}
+
 /* Writes out information about a block or inode bitmap. Called from within
  * groupdesc_stat() since it iterates through all blockgroup descriptors.
  */
-void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type)
+void bitmap_stat(uint32_t bitmap_id, uint32_t group_i, int bitmap_type)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
-    uint32_t thingies_per_group = bitmap_type ? superblock.s_inodes_per_group : superblock.s_blocks_per_group;
     uint64_t bitmap_off = blocksize * bitmap_id;
 
     uint8_t *bitmap = malloc(blocksize);
@@ -298,16 +310,15 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type)
     }
 
     pread_all(imgfd, bitmap, blocksize, bitmap_off); 
-    for (uint32_t byte_i = 0; byte_i < blocksize; byte_i++)
-    {
+    for (uint32_t byte_i = 0; byte_i < blocksize; byte_i++) {
         uint8_t byte = bitmap[byte_i];
 
         for (int bit_i = 0; bit_i < 8; bit_i++) {
             if (!(byte & 0x01)) {
-                uint32_t free_block_nr = (byte_i * 8 + bit_i + superblock.s_first_data_block) + cur_block_group * thingies_per_group;
+                uint32_t index = bitmap_type ? get_inode_number(byte_i, bit_i, group_i) : get_block_index(byte_i, bit_i, group_i);
                 struct fmt_entry bitmap_info[BITMAP_FIELDS] = {
                     {"%x", bitmap_id},
-                    {"%u", free_block_nr}
+                    {"%u", index}
                 };
                 write_csv(BITMAP_CSV, bitmap_info, BITMAP_FIELDS);
             }
@@ -318,11 +329,7 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type)
             byte >>= 1;
         }
     }
-}
-
-uint32_t get_inode_number(uint32_t cur_block_group)
-{
-    return (cur_block_group * superblock.s_inodes_per_group);
+    free(bitmap);
 }
 
 /* Make sure to call superblock_stat to initialize the superblock global before
@@ -364,8 +371,8 @@ void groupdesc_stat()
         write_csv(GROUP_CSV, blockgroup_info, GROUP_FIELDS);
 
         // write bitmap info for this blockgroup
-        bitmap_stat(blockgroup.bg_block_bitmap, i, 0);
-        // bitmanp_stat(blockgroup.bg_inode_bitmap, i, 1);
+        bitmap_stat(blockgroup.bg_block_bitmap, i, BLOCK_BITMAP);
+        bitmap_stat(blockgroup.bg_inode_bitmap, i, INODE_BITMAP);
         groupdesc_off += sizeof(blockgroup);
     }
 }
