@@ -315,6 +315,43 @@ void groupdesc_stat(int imgfd)
     }
 }
 
+// bitmap_type is 0 for blocks and 1 for inodes
+void bitmap_stat(uint32_t bitmap_id, uint32_t cur_block_group, int bitmap_type,
+                 int imgfd)
+{
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
+    uint32_t thingies_per_group = bitmap_type ? superblock.s_inodes_per_group : superblock.s_blocks_per_group;
+    uint64_t bitmap_off = blocksize * bitmap_id;
+
+    void *bitmap = malloc(blocksize);
+    if (bitmap == NULL) {
+        perror("malloc failed");
+        exit(1);
+    }
+
+    pread_all(imgfd, bitmap, blocksize, bitmap_off); 
+    for (int byte_i = 0; byte_i < blocksize; byte_i++)
+    {
+        uint8_t byte_i = bitmap[byte_i];
+        uint8_t topbit = 0x80;
+
+        for (int bit_i = 0; bit_i < 8; bit_i++) {
+            if (byte & topbit)
+            {
+                struct fmt_entry inode_info[BITMAP_FILEDS] = {
+                    {"%x", bitmap_id},
+                    {"%u", (byte_i * 8 + bit_i) + cur_block_group * thingies_per_group}
+                };
+            }
+            /*else
+            {
+                inodelist<- node // put the bit into the inodelist
+            }*/
+            byte <<= 1;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
