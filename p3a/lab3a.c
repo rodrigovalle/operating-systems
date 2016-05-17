@@ -79,8 +79,11 @@ static int imgfd = -1;
 #define EXT2_S_IFDIR        0x4000
 #define EXT2_S_IFLNK        0xA000
 #define EXT2_BLOCK_SIZE(s)  (1024 << (s).s_log_block_size)
+#define EXT2_BLOCKGROUPS(s) (((s).s_blocks_count / (s).s_blocks_per_group) + 1)
 #define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
 #define EXT2_FIRST_INODE(s) ((s).s_rev_level >= 1 ? (s).s_first_ino : 11)
+#define EXT2_LASTBG_SIZE(s) ((s).s_blocks_count % (s).s_blocks_per_group)
+
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -273,11 +276,8 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
  */
 void superblock_stat()
 {
-    ssize_t s;
-
     // read in the superblock
-    s = pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
-    assert(s == SUPERBLOCK_SIZE);
+    pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
 
     // some logic for the fragment size taken from the documentation
     uint32_t frag_size = superblock.s_log_frag_size;
@@ -443,23 +443,18 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 void groupdesc_stat()
 {
     // get some information from the superblock
-    uint32_t total_n_blocks = superblock.s_blocks_count;
-    uint32_t blocks_per_group = superblock.s_blocks_per_group;
-    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
 
     // group descriptor is in the block immediately following the superblock
     uint64_t groupdesc_off = SUPERBLOCK_OFFSET + blocksize;
-
-    // this is the number of block groups (+1 to include the last block group
-    // which might not be full)
-    uint32_t n_block_groups = total_n_blocks / blocks_per_group + 1;
+    uint32_t n_block_groups = EXT2_BLOCKGROUPS(superblock);
 
     for (uint32_t i = 0; i < n_block_groups; i++) {
         pread_all(imgfd, &blockgroup, sizeof(blockgroup), groupdesc_off);
-        uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
 
+        uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
         if (i == n_block_groups - 1) {
-            n_blocks_for_this_group = total_n_blocks % blocks_per_group;
+            n_blocks_for_this_group = EXT2_LASTBG_SIZE(superblock);
         }
 
         // format info and write to group.csv
@@ -498,7 +493,7 @@ int main(int argc, char *argv[])
         perror("opening image");
 
     /* examine the file system */
-    superblock_stat();
+    superblock_stat(); //writes the globally declared superblock
     groupdesc_stat(); //also populates bitmap.csv
     close_csv();
 }
