@@ -39,7 +39,7 @@ static char *filenames[N_FILES] = {
     "indirect.csv",
 };
 
-/* the number of fields each csv contains */
+/* the number of fields each csv contains */#define EXT2_NAME_LENGTH    255
 enum output_fields {
     SUPER_FIELDS      =   9,
     GROUP_FIELDS      =   7,
@@ -74,6 +74,7 @@ static int imgfd = -1;
 #define SUPERBLOCK_OFFSET   1024
 #define SUPERBLOCK_SIZE     1024
 #define EXT2_N_BLOCKS       15
+#define EXT2_NAME_LENGTH    255
 #define EXT2_S_IFREG        0x8000
 #define EXT2_S_IFDIR        0x4000
 #define EXT2_S_IFLNK        0xA000
@@ -186,6 +187,16 @@ struct ext2_inode {
     } osd2;             /* OS dependent 2 */
 } inode;
 
+/* Structure of a directory entry on the disk
+ * 
+ */
+struct ext2_dir_entry {
+    uint32_t inode;     /* Inode number */
+    uint16_t rec_len;   /* Directory entry length */
+    uint16_t name_len;  /* Name length */
+    char name[EXT2_NAME_LENGTH];    /* File Name */
+} dir_entry;
+
 /* Populates the csv_files array with references to appropriately named and
  * newly created output files.
  */
@@ -292,6 +303,28 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
+/* Parse the directory files and their entries.  Something something about
+ *  linked lists and indices.  
+ */
+void directoryentry_stat(int inode_nr)
+{
+    // iterate through all of the blocks in this inode
+    for (int i = 0; i < 12; i++) { // there are 12 direct blocks
+        if (inode.i_block[i] != NULL) {// if valid block entry
+            dir_entry = *inode.i_block[i];
+            struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
+                {"%u", inode_nr},
+                {"%u", i},
+                {"%u", dir_entry.rec_len},
+                {"%u", dir_entry.name_len},
+                {"%u", dir_entry.inode},
+                {"%s", dir_entry.name},
+            };
+            write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
+        }
+    } 
+}
+
 // TODO: large inode structs? checkout ext2_fs.h
 /* Takes an inode table block ide and a (nonempty) inode number to examine
  */
@@ -313,6 +346,7 @@ void inode_stat(int itable_blockid, int inode_nr)
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
+            directoryentry_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
