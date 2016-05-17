@@ -79,6 +79,7 @@ static int imgfd = -1;
 #define EXT2_S_IFLNK        0xA000
 #define EXT2_BLOCK_SIZE(s)  (1024 << (s).s_log_block_size)
 #define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
+#define EXT2_FIRST_INODE(s) ((s).s_rev_level >= 1 ? (s).s_first_ino : 11)
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -113,13 +114,13 @@ struct ext2_super_block {
     uint16_t   s_def_resuid;           /* Default uid for reserved blocks */
     uint16_t   s_def_resgid;           /* Default gid for reserved blocks */
 
-    /* eXT2 REVISION 1 -- please consult me before using these */
+    /* EXT2 REVISION 1 -- use the macros to access these values */
     uint32_t   s_first_ino;            /* First inode useable for std files */
     uint16_t   s_inode_size;           /* Size of the inode structure */
 } superblock;
 
 /*
- * structure of a blocks group descriptor.
+ * Structure of a blocks group descriptor.
  */
 struct ext2_group_desc
 {
@@ -138,7 +139,7 @@ struct ext2_group_desc
 } blockgroup;
 
 /*
- * structure of an inode on the disk
+ * Structure of an inode on the disk
  */                                                                             
 struct ext2_inode {
     uint16_t   i_mode;          /* File mode */
@@ -185,7 +186,7 @@ struct ext2_inode {
     } osd2;             /* OS dependent 2 */
 } inode;
 
-/* populates the csv_files array with references to appropriately named and
+/* Populates the csv_files array with references to appropriately named and
  * newly created output files.
  */
 static void open_csv() {
@@ -196,18 +197,19 @@ static void open_csv() {
     }
 }
 
-/* closes all csv files. Call after we're finished writing.
+/* Closes all csv files. Call after we're finished writing.
  */
 static void close_csv()
 {
     for (int i = 0; i < N_FILES; i++) {
-        fclose(csv_files[i]); }
+        fclose(csv_files[i]);
+    }
 }
 
 
-/* writes an array of entries out to the corresponding csv file in the
+/* Writes an array of entries out to the corresponding csv file in the
  * appropriate format. Make sure to call open_files() first.
- * notes:
+ * NOTES:
  *  - entry and format must both have length n.
  *  - you can only specify one "type" in the format string. eg %d, %x, etc.
  */
@@ -231,14 +233,14 @@ static void write_csv(int file, const struct fmt_entry *entries, int n)
  * returns: total number of bytes read, kills program (with message) if pread
  * throws an error. 
  *
- * todo: aligned reads? -- EDIT: don't do this. O_DIRECT is annoying as hell,
+ * TODO: aligned reads? -- EDIT: don't do this. O_DIRECT is annoying as hell,
  * this works. check out the link though, it's interesting; why would ext2fslib
  * do it this way...
  *
  * https://fossies.org/dox/e2fsprogs-1.42.13/unix__io_8c_source.html#l00119
  * an example taken directly from the ext2fs library
  *
- * todo: maybe turn this into a function for reading in an entire block based
+ * TODO: maybe turn this into a function for reading in an entire block based
  * on blocksize.
  */
 static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
@@ -256,7 +258,7 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
     return bytes_read;
 }
 
-/* parse the superblock at 1024 bytes in, write information to super.csv
+/* Parse the superblock at 1024 bytes in, write information to super.csv
  */
 void superblock_stat()
 {
@@ -269,7 +271,7 @@ void superblock_stat()
     // some logic for the fragment size taken from the documentation
     uint32_t frag_size = superblock.s_log_frag_size;
 
-    // tODO: note, this is always true
+    // TODO: note, this is always true
     if (frag_size > 0)
         frag_size = 1024 << frag_size;
     else
@@ -290,8 +292,8 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
-// todo: large inode structs? checkout ext2_fs.h
-/* takes an inode table block ide and a (nonempty) inode number to examine
+// TODO: large inode structs? checkout ext2_fs.h
+/* Takes an inode table block ide and a (nonempty) inode number to examine
  */
 void inode_stat(int itable_blockid, int inode_nr)
 {
