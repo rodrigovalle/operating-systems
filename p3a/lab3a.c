@@ -7,7 +7,6 @@
 #include <sys/mman.h>
 
 #include <assert.h>  //for debug
-
 /* NOTE: #include <ext2fs/ext2_fs.h>
  * not allowed according to Prof. Kampe, but contains a lot of important
  * details about the ext2 file system, so I've read through it
@@ -300,16 +299,17 @@ void directoryentry_stat(int inode_nr)
 {
     // iterate through all of the blocks in this inode
     for (int i = 0; i < 12; i++) { // there are 12 direct blocks
-        if (inode.i_block[i] != 0) {// if valid block entry
-            uint64_t entry_off = inode.iblock[i] * EXT2_BLOCK_SIZE(superblock);
-            pread_all(imgfd, &dir_entry, sizeof(ext2_dir_entry), entry_off);
+        if (inode.i_block[i] != 0) { // if valid block entry
+            uint64_t entry_off = inode.i_block[i] * EXT_INODE_SIZE(superblock);
+            pread_all(imgfd, &dir_entry, sizeof(dir_entry), entry_off);
+
             struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
                 {"%u", inode_nr},
                 {"%u", i},
                 {"%u", dir_entry.rec_len},
                 {"%u", dir_entry.name_len},
                 {"%u", dir_entry.inode},
-                {"%s", dir_entry.name},
+                //{"%.*s", dir_entry.name}
             };
             write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
         }
@@ -337,7 +337,7 @@ void inode_stat(int itable_blockid, int inode_nr)
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-            directoryentry_stat(inode_nr);
+            //directoryentry_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -348,7 +348,7 @@ void inode_stat(int itable_blockid, int inode_nr)
         {"%d", inode_nr},
         {"%c", filetype},
         {"%o", inode.i_mode & 0x0FFF},
-        {"%d", inode.i_uid},
+        {"%d", inode.i_uid}, // TODO uid and gid are only the bottom 16 bits or something, fix this
         {"%d", inode.i_gid},
         {"%d", inode.i_links_count},
         {"%x", inode.i_ctime},
