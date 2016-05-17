@@ -69,12 +69,16 @@ static int imgfd = -1;
 
 /* EXT2 DEFINITIONS
  * these definitions taken directly from <ext2fs/ext2_fs.h>
+ * macros were created by us using the ext2 documentation
  */
 #define SUPERBLOCK_OFFSET   1024
 #define SUPERBLOCK_SIZE     1024
-#define EXT2_BLOCK_SIZE(x)  ((1024) << (x))
-#define EXT2_INODE_SIZE(s)  ((s).s_rev_level ? (s).s_inode_size : 128)
 #define EXT2_N_BLOCKS       15
+#define EXT2_S_IFREG        0x8000
+#define EXT2_S_IFDIR        0x4000
+#define EXT2_S_IFLNK        0xA000
+#define EXT2_BLOCK_SIZE(s)  (1024 << (s).s_log_block_size)
+#define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -109,13 +113,13 @@ struct ext2_super_block {
     uint16_t   s_def_resuid;           /* Default uid for reserved blocks */
     uint16_t   s_def_resgid;           /* Default gid for reserved blocks */
 
-    /* EXT2 REVISION 1 -- please consult me before using these */
+    /* eXT2 REVISION 1 -- please consult me before using these */
     uint32_t   s_first_ino;            /* First inode useable for std files */
     uint16_t   s_inode_size;           /* Size of the inode structure */
 } superblock;
 
 /*
- * Structure of a blocks group descriptor.
+ * structure of a blocks group descriptor.
  */
 struct ext2_group_desc
 {
@@ -131,12 +135,11 @@ struct ext2_group_desc
 	uint16_t	bg_inode_bitmap_csum_lo;/* crc32c(s_uuid+grp_num+bitmap) LSB */
 	uint16_t	bg_itable_unused;	    /* Unused inodes count */
 	uint16_t	bg_checksum;		    /* crc16(s_uuid+group_num+group_desc)*/
-};
+} blockgroup;
 
 /*
- * Structure of an inode on the disk
+ * structure of an inode on the disk
  */                                                                             
-
 struct ext2_inode {
     uint16_t   i_mode;          /* File mode */
     uint16_t   i_uid;           /* Low 16 bits of Owner Uid */
@@ -180,9 +183,9 @@ struct ext2_inode {
             uint32_t   h_i_author;
         } hurd2;
     } osd2;             /* OS dependent 2 */
-};
+} inode;
 
-/* Populates the csv_files array with references to appropriately named and
+/* populates the csv_files array with references to appropriately named and
  * newly created output files.
  */
 static void open_csv() {
@@ -193,19 +196,18 @@ static void open_csv() {
     }
 }
 
-/* Closes all csv files. Call after we're finished writing.
+/* closes all csv files. Call after we're finished writing.
  */
 static void close_csv()
 {
     for (int i = 0; i < N_FILES; i++) {
-        fclose(csv_files[i]);
-    }
+        fclose(csv_files[i]); }
 }
 
 
-/* Writes an array of entries out to the corresponding csv file in the
+/* writes an array of entries out to the corresponding csv file in the
  * appropriate format. Make sure to call open_files() first.
- * NOTES:
+ * notes:
  *  - entry and format must both have length n.
  *  - you can only specify one "type" in the format string. eg %d, %x, etc.
  */
@@ -229,14 +231,14 @@ static void write_csv(int file, const struct fmt_entry *entries, int n)
  * returns: total number of bytes read, kills program (with message) if pread
  * throws an error. 
  *
- * TODO: aligned reads? -- EDIT: don't do this. O_DIRECT is annoying as hell,
+ * todo: aligned reads? -- EDIT: don't do this. O_DIRECT is annoying as hell,
  * this works. check out the link though, it's interesting; why would ext2fslib
  * do it this way...
  *
  * https://fossies.org/dox/e2fsprogs-1.42.13/unix__io_8c_source.html#l00119
  * an example taken directly from the ext2fs library
  *
- * TODO: maybe turn this into a function for reading in an entire block based
+ * todo: maybe turn this into a function for reading in an entire block based
  * on blocksize.
  */
 static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
@@ -254,7 +256,7 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
     return bytes_read;
 }
 
-/* Parse the superblock at 1024 bytes in, write information to super.csv
+/* parse the superblock at 1024 bytes in, write information to super.csv
  */
 void superblock_stat()
 {
@@ -267,7 +269,7 @@ void superblock_stat()
     // some logic for the fragment size taken from the documentation
     uint32_t frag_size = superblock.s_log_frag_size;
 
-    // TODO: note, this is always true
+    // tODO: note, this is always true
     if (frag_size > 0)
         frag_size = 1024 << frag_size;
     else
@@ -278,7 +280,7 @@ void superblock_stat()
         {"%x", superblock.s_magic},
         {"%u", superblock.s_inodes_count},
         {"%u", superblock.s_blocks_count},
-        {"%u", EXT2_BLOCK_SIZE(superblock.s_log_block_size)},
+        {"%u", EXT2_BLOCK_SIZE(superblock)},
         {"%u", frag_size},
         {"%u", superblock.s_blocks_per_group},
         {"%u", superblock.s_inodes_per_group},
@@ -288,37 +290,52 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
-// TODO: large inode structs? checkout ext2_fs.h
+// todo: large inode structs? checkout ext2_fs.h
 /* takes an inode table block ide and a (nonempty) inode number to examine
  */
-void inode_stat(int intable_blockid, int inode_nr)
+void inode_stat(int itable_blockid, int inode_nr)
 {
-    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
-    uint64_t intable_off = intable_blockid * blocksize;
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint64_t itable_off = itable_blockid * blocksize;
+    uint32_t inode_size = EXT2_INODE_SIZE(superblock);
+    uint64_t inode_off = itable_off + (inode_nr - 1) * inode_size;
 
-    void *inode = malloc(EXT2_INODE_SIZE(superblock.inodes_count));
-    pread_all();
     // find the inode table
+    // (be careful to use sizeof(struct inode) and not inode_size)
+    pread_all(imgfd, &inode, sizeof(struct ext2_inode), inode_off);
+
+    char filetype = '?';
+    switch (inode.i_mode & 0xF000) {
+        case EXT2_S_IFREG:
+            filetype = 'f';
+            break;
+        case EXT2_S_IFDIR:
+            filetype = 'd';
+            break;
+        case EXT2_S_IFLNK:
+            filetype = 's';
+            break;
+    }
+
     struct fmt_entry inode_info[INODE_FIELDS] = {
         {"%d", inode_nr},
         {"%c", filetype},
-        {"%o", mode},
-        {"%d", owner},
-        {"%d", group},
-        {"%d", link_count},
-        {"%x", creation_time},
-        {"%x", modification_time},
-        {"%x", access_time},
-        {"%d", file_size},
-        {"%d", number_of_blocks},
-    }
+        {"%o", inode.i_mode & 0x0FFF},
+        {"%d", inode.i_uid},
+        {"%d", inode.i_gid},
+        {"%d", inode.i_links_count},
+        {"%x", inode.i_ctime},
+        {"%x", inode.i_mtime},
+        {"%x", inode.i_atime},
+        {"%d", inode.i_size}, // TODO: only represents the lower 32 bits of the file size (in bytes) for revision 1 and later
+        {"%d", inode.i_blocks},
+    };
 
     // block pointers (15)
-    for (int i = 11; i < EXT2_N_BLOCKS + 11; i++) {
-        inode_info[i] = {"%x", block_ptr};
-    }
-
-    free(inode);
+    //for (int i = 0; i < EXT2_N_BLOCKS; i++) {
+    //    inode_info[11+i] = {"%x", block_ptr};
+    //}
+    write_csv(INODE_CSV, inode_info, INODE_FIELDS - EXT2_N_BLOCKS);
 }
 
 uint32_t get_block_index(int byte_nr, int bit_nr, uint32_t group_i)
@@ -347,7 +364,7 @@ uint32_t get_inode_number(int byte_nr, int bit_nr, uint32_t group_i)
  */
 void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 {
-    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint64_t bitmap_off = blocksize * bitmap_id;
 
     uint8_t *bitmap = malloc(blocksize);
@@ -360,26 +377,25 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 
     // iterate over the bits of each byte in the bitmap
     // remember: ext2 stores bitmaps in little endian
-    for (uint32_t byte = 0; byte < blocksize; byte++) {
-        for (int bit = 0; bit < 8; bit++) {
-            if (!(bitmap[byte] & 0x01)) {  // empty bitmap entry
-                // bitmap type determines how to calculate the offset
-                uint32_t index = bitmap_type ?
-                    get_inode_number(byte, bit, group_index) :
-                    get_block_index(byte, bit, group_index);
+    for (uint32_t byte_nr = 0; byte_nr < blocksize; byte_nr++) {
+        uint8_t octet = bitmap[byte_nr];
+        for (uint8_t bit_nr = 0; bit_nr < 8; bit_nr++) {
+            uint32_t index = bitmap_type ?
+                get_inode_number(byte_nr, bit_nr, group_index) :
+                get_block_index(byte_nr, bit_nr, group_index);
 
+            if (!(octet & 0x01)) {  // empty bitmap entry
                 struct fmt_entry bitmap_info[BITMAP_FIELDS] = {
                     {"%x", bitmap_id},
                     {"%u", index}
                 };
-
                 write_csv(BITMAP_CSV, bitmap_info, BITMAP_FIELDS);
 
             } else if (bitmap_type == INODE_BITMAP) {
-                // lol just call the function for processing inodes
-                // inode_stat();
+                // process the non-empty inode
+                inode_stat(blockgroup.bg_inode_table, index);
             }
-            byte >>= 1;
+            octet >>= 1;
         }
     }
     free(bitmap);
@@ -393,7 +409,7 @@ void groupdesc_stat()
     // get some information from the superblock
     uint32_t total_n_blocks = superblock.s_blocks_count;
     uint32_t blocks_per_group = superblock.s_blocks_per_group;
-    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock.s_log_block_size);
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
 
     // group descriptor is in the block immediately following the superblock
     uint64_t groupdesc_off = SUPERBLOCK_OFFSET + blocksize;
@@ -402,7 +418,6 @@ void groupdesc_stat()
     // which might not be full)
     uint32_t n_block_groups = total_n_blocks / blocks_per_group + 1;
 
-    struct ext2_group_desc blockgroup;
     for (uint32_t i = 0; i < n_block_groups; i++) {
         pread_all(imgfd, &blockgroup, sizeof(blockgroup), groupdesc_off);
         uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
@@ -446,6 +461,7 @@ int main(int argc, char *argv[])
     if (imgfd == -1)
         perror("opening image");
 
+    /* examine the file system */
     superblock_stat();
     groupdesc_stat(); //also populates bitmap.csv
     close_csv();
