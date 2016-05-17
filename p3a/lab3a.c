@@ -310,8 +310,9 @@ void directoryentry_stat(int inode_nr)
 {
     // iterate through all of the blocks in this inode
     for (int i = 0; i < 12; i++) { // there are 12 direct blocks
-        if (inode.i_block[i] != NULL) {// if valid block entry
-            dir_entry = *inode.i_block[i];
+        if (inode.i_block[i] != 0) {// if valid block entry
+            uint64_t entry_off = inode.iblock[i] * EXT2_BLOCK_SIZE(superblock);
+            pread_all(imgfd, &dir_entry, sizeof(ext2_dir_entry), entry_off);
             struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
                 {"%u", inode_nr},
                 {"%u", i},
