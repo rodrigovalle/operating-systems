@@ -39,7 +39,7 @@ static char *filenames[N_FILES] = {
     "indirect.csv",
 };
 
-/* the number of fields each csv contains */#define EXT2_NAME_LENGTH    255
+/* the number of fields each csv contains */
 enum output_fields {
     SUPER_FIELDS      =   9,
     GROUP_FIELDS      =   7,
@@ -83,7 +83,9 @@ static int imgfd = -1;
 #define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
 #define EXT2_FIRST_INODE(s) ((s).s_rev_level >= 1 ? (s).s_first_ino : 11)
 #define EXT2_LASTBG_SIZE(s) ((s).s_blocks_count % (s).s_blocks_per_group)
-
+#define EXT2_FRAG_SIZE(s)   ((s).s_log_frag_size > 0 ? \
+                                 1024 << (s).s_log_frag_size : \
+                                 1024 >> -(s).s_log_frag_size)
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -253,9 +255,6 @@ static void write_csv(int file, const struct fmt_entry *entries, int n)
  *
  * https://fossies.org/dox/e2fsprogs-1.42.13/unix__io_8c_source.html#l00119
  * an example taken directly from the ext2fs library
- *
- * TODO: maybe turn this into a function for reading in an entire block based
- * on blocksize.
  */
 static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
 {
@@ -272,21 +271,12 @@ static ssize_t pread_all(int imgfd, void *buf, size_t count, off_t offset)
     return bytes_read;
 }
 
-/* Parse the superblock at 1024 bytes in, write information to super.csv
- */
+/* Parse the superblock 1024 bytes in, write information to super.csv
+ * Also, write the superblock global variable */
 void superblock_stat()
 {
     // read in the superblock
     pread_all(imgfd, &superblock, SUPERBLOCK_SIZE, SUPERBLOCK_OFFSET);
-
-    // some logic for the fragment size taken from the documentation
-    uint32_t frag_size = superblock.s_log_frag_size;
-
-    // TODO: note, this is always true
-    if (frag_size > 0)
-        frag_size = 1024 << frag_size;
-    else
-        frag_size = 1024 >> -frag_size;
 
     // format entries and print
     struct fmt_entry superblock_info[SUPER_FIELDS] = {
@@ -294,7 +284,7 @@ void superblock_stat()
         {"%u", superblock.s_inodes_count},
         {"%u", superblock.s_blocks_count},
         {"%u", EXT2_BLOCK_SIZE(superblock)},
-        {"%u", frag_size},
+        {"%u", EXT2_FRAG_SIZE(superblock)},
         {"%u", superblock.s_blocks_per_group},
         {"%u", superblock.s_inodes_per_group},
         {"%u", superblock.s_frags_per_group},
@@ -303,8 +293,8 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
-/* Parse the directory files and their entries.  Something something about
- *  linked lists and indices.  
+/* Parse the directory files and their entries. Something something about
+ * linked lists and indices.  
  */
 void directoryentry_stat(int inode_nr)
 {
@@ -393,7 +383,7 @@ uint32_t get_inode_number(int byte_nr, int bit_nr, uint32_t group_i)
     uint32_t global_off = group_i * superblock.s_inodes_per_group;
 
     // inodes are 1-indexed
-    return local_off + global_off + 1;
+    return global_off + local_off + 1;
 }
 
 /* Writes out information about a block or inode bitmap. Called from within
