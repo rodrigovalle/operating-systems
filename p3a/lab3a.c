@@ -295,35 +295,41 @@ void superblock_stat()
 /*
  * Parse a given direct blockptr for a directory.
  */
-void directoryentry_stat(uint32_t blockptr, int inode_nr)
+void directory_stat(uint32_t blockptr, int inode_nr)
 {
-    if (blockptr != 0) // TO DO: this shouldn't happen, but it's a check
-    {
-        uint64_t offsetCount = 0;
-        uint64_t entry_off = blockptr * EXT2_BLOCK_SIZE(superblock);
-        void *dir_block = malloc(EXT2_BLOCK_SIZE(superblock));
+    if (blockptr != 0) {
+        uint64_t reclen_total = 0;
+        uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+        uint64_t entry_off = blockptr * blocksize;
+
+        void *dir_block = malloc(blocksize);
         uint64_t dir_index = 0;
-        pread_all(imgfd, &dir_block, EXT2_BLOCK_SIZE, entry_off);
-        while (offsetCount < EXT2_BLOCK_SIZE(superblock))
-        {
-            struct ext2_dir_entry *entry = dir_block + offsetCount;
-            offsetCount += entry->rec_len;
-            if (entry->inode != 0)
-            {
+
+        pread_all(imgfd, &dir_block, blocksize, entry_off);
+
+        while (reclen_total < blocksize) {
+            struct ext2_dir_entry *entry = dir_block + reclen_total;
+            reclen_total += entry->rec_len;
+
+            if (entry->inode != 0) {
                 struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
                     {"%u", inode_nr},
                     {"%u", dir_index},
                     {"%u", entry->rec_len},
                     {"%u", entry->name_len},
                     {"%u", entry->inode},
-                    {"%.*s", entry->name}
+                    //{"%.*s", entry->name}
                 };
                 write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
             }
+
            dir_index++; 
-        }          
+        }
+
+        free(dir_block);
     }
 }
+
 // TODO: large inode structs? checkout ext2_fs.h
 /* Takes an inode table block ide and a (nonempty) inode number to examine
  */
@@ -345,7 +351,7 @@ void inode_stat(int itable_blockid, int inode_nr)
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-            //directoryentry_stat(inode_nr);
+            //directory_stat(inode.i_block[0], inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -367,10 +373,11 @@ void inode_stat(int itable_blockid, int inode_nr)
     };
 
     // block pointers (15)
-    //for (int i = 0; i < EXT2_N_BLOCKS; i++) {
-    //    inode_info[11+i] = {"%x", block_ptr};
-    //}
-    write_csv(INODE_CSV, inode_info, INODE_FIELDS - EXT2_N_BLOCKS);
+    for (int i = 0; i < EXT2_N_BLOCKS; i++) {
+        inode_info[i+11].fmt_str = "%x";
+        inode_info[i+11].data = inode.i_block[i];
+    }
+    write_csv(INODE_CSV, inode_info, INODE_FIELDS);
 }
 
 uint32_t get_block_index(int byte_nr, int bit_nr, uint32_t group_i)
