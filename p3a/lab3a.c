@@ -86,13 +86,11 @@ static int imgfd = -1;
                                  1024 >> -(s).s_log_frag_size)
 
 // round up the numer of block groups
-//#define EXT2_BLOCKGROUPS(s) ((s).s_blocks_count + ((s).s_blocks_per_group / 2) / (s).s_blocks_per_group)
-#define EXT2_BLOCKGROUPS(s) ((s).s_blocks_count / (s).s_blocks_per_group + 1) // TODO: this is wrong
+#define DIV_ROUND_UP(i,j)   (((i) + ((j) - 1)) / (j))
+#define EXT2_BLOCKGROUPS(s) (DIV_ROUND_UP((s).s_blocks_count, (s).s_blocks_per_group))
 
-// TODO: trying to fix that this gives the wrong answer when
-// blocks_count % blocks_per_group == 0
-#define EXT2_BLOCK_REMAINDER(s) (2 * (s).s_blocks_per_group - (EXT2_BLOCKGROUPS(s) * (s).s_blocks_per_group))
-#define EXT2_INODE_REMAINDER(s) ((s).s_inodes_count % (s).s_inodes_per_group)
+#define EXT2_BLOCK_REMAINDER(s) ((s).s_blocks_per_group - ((EXT2_BLOCKGROUPS(s) * (s).s_blocks_per_group) - (s).s_blocks_count))
+#define EXT2_INODE_REMAINDER(s) ((s).s_inodes_per_group - ((EXT2_BLOCKGROUPS(s) * (s).s_inodes_per_group) - (s).s_inodes_count))
 
 /*
  * Structure of the superblock (compatible with all ext2 versions)
@@ -311,7 +309,6 @@ void directory_stat(int dir_inode)
 
     // traverse the direct blocks
     for (int i = 0; i < 12; i++) {
-        printf("dir_inode: %d, block: %d\n", dir_inode, i);
         if (inode.i_block[i] == 0) {
             return;
         }
@@ -469,10 +466,11 @@ void groupdesc_stat()
 
         // blocks and inodes for this particular group
         uint64_t n_blocks_g = superblock.s_blocks_per_group;
-        //uint64_t n_inodes_g = superblock.s_inodes_per_group;
+        uint64_t n_inodes_g = superblock.s_inodes_per_group;
         if (i == n_block_groups - 1) {
+            printf("%d\n", EXT2_BLOCK_REMAINDER(superblock));
             n_blocks_g = EXT2_BLOCK_REMAINDER(superblock);
-            //n_inodes_g = EXT2_INODE_REMAINDER(superblock);
+            n_inodes_g = EXT2_INODE_REMAINDER(superblock);
         }
 
         // format info and write to group.csv
@@ -505,10 +503,8 @@ void groupdesc_stat()
         // eg. in the last block group, the number of inodes represented would
         // be s_inodes_count % s_inodes_per_group but we treat it as if the
         // block is full
-        //bitmap_stat(group.bg_block_bitmap, n_blocks_g, blk_off, BLOCK_BITMAP);
-        //bitmap_stat(group.bg_inode_bitmap, n_inodes_g, ino_off, INODE_BITMAP);
-        bitmap_stat(group.bg_block_bitmap, superblock.s_blocks_per_group, blk_off, BLOCK_BITMAP);
-        bitmap_stat(group.bg_inode_bitmap, superblock.s_inodes_per_group, ino_off, INODE_BITMAP);
+        bitmap_stat(group.bg_block_bitmap, n_blocks_g, blk_off, BLOCK_BITMAP);
+        bitmap_stat(group.bg_inode_bitmap, n_inodes_g, ino_off, INODE_BITMAP);
         groupdesc_off += sizeof(struct ext2_group_desc);
     }
 }
