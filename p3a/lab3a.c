@@ -61,7 +61,7 @@ struct fmt_entry {
 // file descriptor reference to the open disk image we're analyzing
 static int imgfd = -1;
 
-/* These #defines are for bitmap_stat() */
+/* NOTE: these #define are for bitmap_stat() */
 #define BLOCK_BITMAP    0
 #define INODE_BITMAP    1
 #define TOP_BIT(byte)   ((byte) & (0x08))
@@ -78,7 +78,6 @@ static int imgfd = -1;
 #define EXT2_S_IFDIR        0x4000
 #define EXT2_S_IFLNK        0xA000
 #define EXT2_BLOCK_SIZE(s)  (1024 << (s).s_log_block_size)
-#define EXT2_BLOCKGROUPS(s) (((s).s_blocks_count / (s).s_blocks_per_group) + 1)
 #define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
 #define EXT2_FIRST_INODE(s) ((s).s_rev_level >= 1 ? (s).s_first_ino : 11)
 #define EXT2_FS_BLOCKS(i,s) ((i).i_blocks / (2 << (s).s_log_block_size))
@@ -86,8 +85,15 @@ static int imgfd = -1;
                                  1024 << (s).s_log_frag_size : \
                                  1024 >> -(s).s_log_frag_size)
 
-#define EXT2_BLOCK_REMAINDER(s) ((s).s_blocks_count % (s).s_blocks_per_group)
+// round up the numer of block groups
+//#define EXT2_BLOCKGROUPS(s) ((s).s_blocks_count + ((s).s_blocks_per_group / 2) / (s).s_blocks_per_group)
+#define EXT2_BLOCKGROUPS(s) ((s).s_blocks_count / (s).s_blocks_per_group + 1) // TODO: this is wrong
+
+// TODO: trying to fix that this gives the wrong answer when
+// blocks_count % blocks_per_group == 0
+#define EXT2_BLOCK_REMAINDER(s) (2 * (s).s_blocks_per_group - (EXT2_BLOCKGROUPS(s) * (s).s_blocks_per_group))
 #define EXT2_INODE_REMAINDER(s) ((s).s_inodes_count % (s).s_inodes_per_group)
+
 /*
  * Structure of the superblock (compatible with all ext2 versions)
  *
@@ -193,8 +199,8 @@ struct ext2_inode {
     } osd2;             /* OS dependent 2 */
 } inode;
 
-/* Structure of a directory entry on the disk
- * 
+/* 
+ * Structure of a directory entry
  */
 struct ext2_dir_entry {
     uint32_t inode;     /* Inode number */
@@ -227,7 +233,6 @@ static void close_csv()
 /* Writes an array of entries out to the corresponding csv file in the
  * appropriate format. Make sure to call open_files() first.
  * NOTES:
- *  - entry and format must both have length n.
  *  - you can only specify one "type" in the format string. eg %d, %x, etc.
  */
 static void write_csv(int file, const struct fmt_entry *entries, int n)
@@ -295,12 +300,12 @@ void superblock_stat()
 }
 
 /*
- * Parse a given direct blockptr for a directory.
+ * Print out some information on the given directory inode
  */
 void directory_stat(int dir_inode)
 {
-    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
-    uint32_t entry_off = 0;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint64_t entry_off = 0;
     uint64_t dir_index = 0;
     void *datablock = malloc(blocksize);
 
@@ -322,8 +327,8 @@ void directory_stat(int dir_inode)
                     {"%u", dir_index},
                     {"%u", entry->rec_len},
                     {"%u", entry->name_len},
-                    {"%u", entry->inode}
-                    //{"%s", entry->name}
+                    {"%u", entry->inode},
+                    {"%s", entry->name}  // TODO: handle null characters too
                 };
                 write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
             }
@@ -336,14 +341,23 @@ void directory_stat(int dir_inode)
     free(datablock);
 }
 
+/* iterates through all nonempty inodes in a group descriptor
+ * NOTE: does another bitmap traversal because we don't actually want to go
+ * through each bit in the bitmap like bitmap_stat() does. We only want to
+ * check inodes that actually exist according to s_inodes_count and we want to
+ * use the correct index into the group's local inode table.
+ */
+
 // TODO: large inode structs? checkout ext2_fs.h
-/* Takes an inode table block ide and a (nonempty) inode number to examine */
-void inode_stat(int itable_block, int inode_nr)
+/* Takes an inode table block and a (nonempty) global inode number, and a local
+ * index (relative to the block group) to examine */
+void inode_stat(uint64_t itable_block, uint64_t inode_nr,
+                uint64_t local_inode_index)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint64_t itable_off = itable_block * blocksize;
     uint32_t inode_size = EXT2_INODE_SIZE(superblock);
-    uint64_t inode_off = itable_off + (inode_nr - 1) * inode_size;
+    uint64_t inode_off = itable_off + local_inode_index * inode_size;
 
     // find the inode table
     // (be careful to use sizeof(struct inode) and not inode_size)
@@ -395,7 +409,7 @@ void inode_stat(int itable_block, int inode_nr)
  * bitmap_type - one of INODE_BITMAP or BLOCK_BITMAP
  */
 void bitmap_stat(uint64_t bitmap_block_index, uint64_t bitmap_size,
-                     uint64_t element_off, int bitmap_type)
+                 uint64_t element_off, int bitmap_type)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
 
@@ -426,7 +440,7 @@ void bitmap_stat(uint64_t bitmap_block_index, uint64_t bitmap_size,
 
             } else if (bitmap_type == INODE_BITMAP) {
                 // process the non-empty inode
-                //inode_stat(blockgroup.bg_inode_table, index);
+                inode_stat(group.bg_inode_table, element_index, element_count);
             }
             octet >>= 1;
             element_count++;
@@ -486,13 +500,15 @@ void groupdesc_stat()
 
         // the spec wants us to iterate through every entry in the bitmap,
         // disregarding the inode and block counts proposed in the superblock.
-        // this is a little screwy in my opinion
+        // this is a little screwy in my opinion because we're processing a
+        // bunch of extra bits in the bitmap that mean nothing
+        // eg. in the last block group, the number of inodes represented would
+        // be s_inodes_count % s_inodes_per_group but we treat it as if the
+        // block is full
         //bitmap_stat(group.bg_block_bitmap, n_blocks_g, blk_off, BLOCK_BITMAP);
         //bitmap_stat(group.bg_inode_bitmap, n_inodes_g, ino_off, INODE_BITMAP);
-        bitmap_stat(group.bg_block_bitmap, superblock.s_blocks_per_group,
-                    blk_off, BLOCK_BITMAP);
-        bitmap_stat(group.bg_inode_bitmap, superblock.s_inodes_per_group,
-                    ino_off, INODE_BITMAP);
+        bitmap_stat(group.bg_block_bitmap, superblock.s_blocks_per_group, blk_off, BLOCK_BITMAP);
+        bitmap_stat(group.bg_inode_bitmap, superblock.s_inodes_per_group, ino_off, INODE_BITMAP);
         groupdesc_off += sizeof(struct ext2_group_desc);
     }
 }
