@@ -199,7 +199,7 @@ struct ext2_dir_entry {
     uint16_t rec_len;   /* Directory entry length */
     uint16_t name_len;  /* Name length */
     char name[EXT2_NAME_LENGTH];    /* File Name */
-} dir_entry;
+};
 
 /* Populates the csv_files array with references to appropriately named and
  * newly created output files.
@@ -292,30 +292,38 @@ void superblock_stat()
     write_csv(SUPER_CSV, superblock_info, SUPER_FIELDS);
 }
 
-/* Parse the directory files and their entries. Something something about
- * linked lists and indices.  
+/*
+ * Parse a given direct blockptr for a directory.
  */
-void directoryentry_stat(int inode_nr)
+void directoryentry_stat(uint32_t blockptr, int inode_nr)
 {
-    // iterate through all of the blocks in this inode
-    for (int i = 0; i < 12; i++) { // there are 12 direct blocks
-        if (inode.i_block[i] != 0) { // if valid block entry
-            uint64_t entry_off = inode.i_block[i] * EXT_INODE_SIZE(superblock);
-            pread_all(imgfd, &dir_entry, sizeof(dir_entry), entry_off);
-
-            struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
-                {"%u", inode_nr},
-                {"%u", i},
-                {"%u", dir_entry.rec_len},
-                {"%u", dir_entry.name_len},
-                {"%u", dir_entry.inode},
-                //{"%.*s", dir_entry.name}
-            };
-            write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
-        }
-    } 
+    if (blockptr != 0) // TO DO: this shouldn't happen, but it's a check
+    {
+        uint64_t offsetCount = 0;
+        uint64_t entry_off = blockptr * EXT2_BLOCK_SIZE(superblock);
+        void *dir_block = malloc(EXT2_BLOCK_SIZE(superblock));
+        uint64_t dir_index = 0;
+        pread_all(imgfd, &dir_block, EXT2_BLOCK_SIZE, entry_off);
+        while (offsetCount < EXT2_BLOCK_SIZE(superblock))
+        {
+            struct ext2_dir_entry *entry = dir_block + offsetCount;
+            offsetCount += entry->rec_len;
+            if (entry->inode != 0)
+            {
+                struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
+                    {"%u", inode_nr},
+                    {"%u", dir_index},
+                    {"%u", entry->rec_len},
+                    {"%u", entry->name_len},
+                    {"%u", entry->inode},
+                    {"%.*s", entry->name}
+                };
+                write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
+            }
+           dir_index++; 
+        }          
+    }
 }
-
 // TODO: large inode structs? checkout ext2_fs.h
 /* Takes an inode table block ide and a (nonempty) inode number to examine
  */
