@@ -356,7 +356,7 @@ void inode_stat(int itable_block, int inode_nr)
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-            //directory_stat(inode_nr);
+            directory_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -409,10 +409,11 @@ uint32_t get_inode_number(int byte_nr, int bit_nr, uint32_t group_i)
 /* Writes out information about a block or inode bitmap. Called from within
  * groupdesc_stat() since it iterates through all blockgroup descriptors.
  */
-void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
+void bitmap_stat(uint32_t bitmap_block, uint32_t group_index,
+                 uint32_t bitmap_size, int bitmap_type)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
-    uint64_t bitmap_off = blocksize * bitmap_id;
+    uint64_t bitmap_off = blocksize * bitmap_block;
 
     uint8_t *bitmap = malloc(blocksize);
     if (bitmap == NULL) {
@@ -424,6 +425,7 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 
     // iterate over the bits of each byte in the bitmap
     // remember: ext2 stores bitmaps in little endian
+    uint32_t element_count = 0;
     for (uint32_t byte_nr = 0; byte_nr < blocksize; byte_nr++) {
         uint8_t octet = bitmap[byte_nr];
         for (uint8_t bit_nr = 0; bit_nr < 8; bit_nr++) {
@@ -433,7 +435,7 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
 
             if (!(octet & 0x01)) {  // empty bitmap entry
                 struct fmt_entry bitmap_info[BITMAP_FIELDS] = {
-                    {"%x", bitmap_id},
+                    {"%x", bitmap_block},
                     {"%u", index}
                 };
                 write_csv(BITMAP_CSV, bitmap_info, BITMAP_FIELDS);
@@ -443,8 +445,14 @@ void bitmap_stat(uint32_t bitmap_id, uint32_t group_index, int bitmap_type)
                 inode_stat(blockgroup.bg_inode_table, index);
             }
             octet >>= 1;
+            element_count++;
+
+            if (element_count == bitmap_size) {
+                goto cleanup;
+            }
         }
     }
+cleanup:
     free(bitmap);
 }
 
@@ -463,14 +471,17 @@ void groupdesc_stat()
     for (uint32_t i = 0; i < n_block_groups; i++) {
         pread_all(imgfd, &blockgroup, sizeof(blockgroup), groupdesc_off);
 
-        uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
+        // blocks and inodes for this particular group
+        uint32_t n_blocks_g = superblock.s_blocks_per_group;
+        uint32_t n_inodes_g = superblock.s_inodes_per_group;
         if (i == n_block_groups - 1) {
-            n_blocks_for_this_group = EXT2_BLOCK_REMAINDER(superblock);
+            n_blocks_g = EXT2_BLOCK_REMAINDER(superblock);
+            n_inodes_g = EXT2_INODE_REMAINDER(superblock);
         }
 
         // format info and write to group.csv
         struct fmt_entry blockgroup_info[GROUP_FIELDS] = {
-            {"%u", n_blocks_for_this_group},
+            {"%u", n_blocks_g},
             {"%u", blockgroup.bg_free_blocks_count},
             {"%u", blockgroup.bg_free_inodes_count},
             {"%u", blockgroup.bg_used_dirs_count},
@@ -481,8 +492,8 @@ void groupdesc_stat()
         write_csv(GROUP_CSV, blockgroup_info, GROUP_FIELDS);
 
         // write bitmap info for this blockgroup
-        bitmap_stat(blockgroup.bg_block_bitmap, i, BLOCK_BITMAP);
-        bitmap_stat(blockgroup.bg_inode_bitmap, i, INODE_BITMAP);
+        bitmap_stat(blockgroup.bg_block_bitmap, i, n_blocks_g, BLOCK_BITMAP);
+        bitmap_stat(blockgroup.bg_inode_bitmap, i, n_inodes_g, INODE_BITMAP);
         groupdesc_off += sizeof(blockgroup);
     }
 }
