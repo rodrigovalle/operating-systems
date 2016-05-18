@@ -81,11 +81,12 @@ static int imgfd = -1;
 #define EXT2_BLOCKGROUPS(s) (((s).s_blocks_count / (s).s_blocks_per_group) + 1)
 #define EXT2_INODE_SIZE(s)  ((s).s_rev_level >= 1 ? (s).s_inode_size : 128)
 #define EXT2_FIRST_INODE(s) ((s).s_rev_level >= 1 ? (s).s_first_ino : 11)
-#define EXT2_LASTBG_SIZE(s) ((s).s_blocks_count % (s).s_blocks_per_group)
 #define EXT2_FRAG_SIZE(s)   ((s).s_log_frag_size > 0 ? \
                                  1024 << (s).s_log_frag_size : \
                                  1024 >> -(s).s_log_frag_size)
 
+#define EXT2_BLOCK_REMAINDER(s) ((s).s_blocks_count % (s).s_blocks_per_group)
+#define EXT2_INODE_REMAINDER(s) ((s).s_inodes_count % (s).s_inodes_per_group)
 /*
  * Structure of the superblock (compatible with all ext2 versions)
  *
@@ -295,48 +296,52 @@ void superblock_stat()
 /*
  * Parse a given direct blockptr for a directory.
  */
-void directory_stat(uint32_t blockptr, int inode_nr)
+void directory_stat(int dir_inode)
 {
-    if (blockptr != 0) {
-        uint64_t reclen_total = 0;
-        uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
-        uint64_t entry_off = blockptr * blocksize;
+    uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t entry_off = 0;
+    uint64_t dir_index = 0;
+    void *datablock = malloc(blocksize);
 
-        void *dir_block = malloc(blocksize);
-        uint64_t dir_index = 0;
+    // traverse the direct blocks
+    for (int i = 0; i < 12; i++) {
+        printf("dir_inode: %d, block: %d\n", dir_inode, i);
+        if (inode.i_block[i] == 0) {
+            return;
+        }
 
-        pread_all(imgfd, &dir_block, blocksize, entry_off);
+        pread_all(imgfd, datablock, blocksize, inode.i_block[i] * blocksize);
 
-        while (reclen_total < blocksize) {
-            struct ext2_dir_entry *entry = dir_block + reclen_total;
-            reclen_total += entry->rec_len;
+        while (entry_off < blocksize) {
+            struct ext2_dir_entry *entry = datablock + entry_off;
 
             if (entry->inode != 0) {
                 struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
-                    {"%u", inode_nr},
+                    {"%u", dir_inode},
                     {"%u", dir_index},
                     {"%u", entry->rec_len},
                     {"%u", entry->name_len},
-                    {"%u", entry->inode},
-                    //{"%.*s", entry->name}
+                    {"%u", entry->inode}
+                    //{"%s", entry->name}
                 };
                 write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
             }
 
-           dir_index++; 
+            entry_off += entry->rec_len;
+            dir_index++;
         }
-
-        free(dir_block);
     }
+
+    free(datablock);
 }
 
 // TODO: large inode structs? checkout ext2_fs.h
 /* Takes an inode table block ide and a (nonempty) inode number to examine
  */
-void inode_stat(int itable_blockid, int inode_nr)
+void inode_stat(int itable_block, int inode_nr)
 {
     uint32_t blocksize = EXT2_BLOCK_SIZE(superblock);
-    uint64_t itable_off = itable_blockid * blocksize;
+    uint64_t itable_off = itable_block * blocksize;
     uint32_t inode_size = EXT2_INODE_SIZE(superblock);
     uint64_t inode_off = itable_off + (inode_nr - 1) * inode_size;
 
@@ -351,7 +356,7 @@ void inode_stat(int itable_blockid, int inode_nr)
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-            //directory_stat(inode.i_block[0], inode_nr);
+            //directory_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -460,7 +465,7 @@ void groupdesc_stat()
 
         uint32_t n_blocks_for_this_group = superblock.s_blocks_per_group;
         if (i == n_block_groups - 1) {
-            n_blocks_for_this_group = EXT2_LASTBG_SIZE(superblock);
+            n_blocks_for_this_group = EXT2_BLOCK_REMAINDER(superblock);
         }
 
         // format info and write to group.csv
