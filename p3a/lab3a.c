@@ -84,6 +84,7 @@ static int imgfd = -1;
 #define EXT2_FRAG_SIZE(s)   ((s).s_log_frag_size > 0 ? \
                                  1024 << (s).s_log_frag_size : \
                                  1024 >> -(s).s_log_frag_size)
+#define EXT2_DIR_NAME_LEN(s) ((s).s_rev_level > 0 ? 0x00FF : 0xFFFF)
 
 // round up the numer of block groups
 #define DIV_ROUND_UP(i,j)   (((i) + ((j) - 1)) / (j))
@@ -300,40 +301,36 @@ void superblock_stat()
 /*
  * Print out some information on the given directory inode
  */
-void directory_stat(int dir_inode)
+void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
 {
+    if (blockptr == 0)
+	return; 
     uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint64_t entry_off = 0;
-    uint64_t dir_index = 0;
     void *datablock = malloc(blocksize);
+    // traverse the direct block
 
-    // traverse the direct blocks
-    for (int i = 0; i < 12; i++) {
-        if (inode.i_block[i] == 0) {
-            return;
-        }
+	pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
 
-        pread_all(imgfd, datablock, blocksize, inode.i_block[i] * blocksize);
+	while (entry_off < blocksize) {
+	    struct ext2_dir_entry *entry = datablock + entry_off;
 
-        while (entry_off < blocksize) {
-            struct ext2_dir_entry *entry = datablock + entry_off;
+	    if (entry->inode != 0) {
+		struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
+		    {"%u", dir_inode},
+		    {"%u", *dir_index},
+		    {"%u", entry->rec_len},
+		    {"%u", (entry->name_len & EXT2_DIR_NAME_LEN(superblock))},
+		    {"%u", entry->inode},
+		    {"\"%s\"", entry->name}  // TODO: handle null characters too
+		};
+		write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
+	    }
 
-            if (entry->inode != 0) {
-                struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
-                    {"%u", dir_inode},
-                    {"%u", dir_index},
-                    {"%u", entry->rec_len},
-                    {"%u", entry->name_len},
-                    {"%u", entry->inode},
-                    {"%s", entry->name}  // TODO: handle null characters too
-                };
-                write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
-            }
-
-            entry_off += entry->rec_len;
-            dir_index++;
-        }
-    }
+	    entry_off += entry->rec_len;
+	    *dir_index = *dir_index + 1;
+	}
+    
 
     free(datablock);
 }
@@ -367,7 +364,7 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-            directory_stat(inode_nr);
+           // directory_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -389,11 +386,17 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
     };
 
     // block pointers (15)
+    uint64_t *dir_index = malloc(sizeof(uint64_t));
+    *dir_index = 0;
     for (int i = 0; i < EXT2_N_BLOCKS; i++) {
         inode_info[i+11].fmt_str = "%x";
         inode_info[i+11].data = inode.i_block[i];
+	if ( (filetype == 'd') && (i < 12)) { // TODO: Implement indirect blocks
+		directory_stat(inode.i_block[i], inode_nr, dir_index);
+	}
     }
     write_csv(INODE_CSV, inode_info, INODE_FIELDS);
+    free(dir_index);
 }
 
 /* Writes out information about a block or inode bitmap. Called from within
@@ -468,7 +471,7 @@ void groupdesc_stat()
         uint64_t n_blocks_g = superblock.s_blocks_per_group;
         uint64_t n_inodes_g = superblock.s_inodes_per_group;
         if (i == n_block_groups - 1) {
-            printf("%d\n", EXT2_BLOCK_REMAINDER(superblock));
+        //    printf("%d\n", EXT2_BLOCK_REMAINDER(superblock));
             n_blocks_g = EXT2_BLOCK_REMAINDER(superblock);
             n_inodes_g = EXT2_INODE_REMAINDER(superblock);
         }
