@@ -299,6 +299,86 @@ void superblock_stat()
 }
 
 /*
+ * Functions dedicated to traversing indirect blocks of the file system and
+   outputting indirect.csv
+ */
+void single_indirect_stat(uint32_t blockptr, int firstLevel)
+{
+    if ((blockptr == 0) && (firstLevel == 0))
+	return;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr);
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+    
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {
+        if (datablock[n_blocks_read] != 0) { // we'll print out its values
+	    struct fmt_entry indirect_info[INDIRECT_FIELDS] = {
+	        {"%x", blockptr},
+	        {"%u", n_blocks_read},
+	        {"%x", datablock[n_blocks_read]}  
+	    };
+	    write_csv(INDIRECT_CSV, indirect_info, INDIRECT_FIELDS);
+	}
+	n_blocks_read++;	
+    }    
+    free(datablock);
+}
+
+void double_indirect_stat(uint32_t blockptr, int firstLevel)
+{    
+    if ((blockptr == 0) && (firstLevel == 0))
+        return;	
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr); 
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {	
+        if (datablock[n_blocks_read] != 0) { // we'll print out its values
+	    struct fmt_entry indirect_info[INDIRECT_FIELDS] = {
+                {"%x", blockptr},
+                {"%u", n_blocks_read},
+                {"%x", datablock[n_blocks_read]}
+            };
+            write_csv(INDIRECT_CSV, indirect_info, INDIRECT_FIELDS);
+
+            single_indirect_stat(datablock[n_blocks_read], 0);
+        }
+        n_blocks_read++;
+    }    
+    free(datablock);
+}
+
+void triple_indirect_stat(uint32_t blockptr, int firstLevel)
+{
+    if ((blockptr == 0) && (firstLevel == 0))
+        return;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr); 
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {
+        if (datablock[n_blocks_read] != 0) { // we'll print out its values
+            struct fmt_entry indirect_info[INDIRECT_FIELDS] = {
+                {"%x", blockptr},
+                {"%u", n_blocks_read},
+                {"%x", datablock[n_blocks_read]}
+            };
+            write_csv(INDIRECT_CSV, indirect_info, INDIRECT_FIELDS);
+
+	    double_indirect_stat(datablock[n_blocks_read], 0);
+        }
+        n_blocks_read++;
+    }    
+    free(datablock);
+}
+ 
+/*
  * Print out some information on the given directory inode
  */
 void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
@@ -394,6 +474,15 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
 	if ( (filetype == 'd') && (i < 12)) { // TODO: Implement indirect blocks
 		directory_stat(inode.i_block[i], inode_nr, dir_index);
 	}
+	if (i == 12) { // first indirect block
+		single_indirect_stat(inode.i_block[i], 1);
+	}
+	else if (i == 13) {
+     	    //printf("%x\n", inode.i_block[i]); 
+	    double_indirect_stat(inode.i_block[i], 1);
+	}
+	else if (i == 14)
+	    triple_indirect_stat(inode.i_block[i], 1);
     }
     write_csv(INODE_CSV, inode_info, INODE_FIELDS);
     free(dir_index);
