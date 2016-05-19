@@ -300,7 +300,7 @@ void superblock_stat()
 
 /*
  * Functions dedicated to traversing indirect blocks of the file system and
-   outputting indirect.csv
+ * outputting indirect.csv
  */
 void single_indirect_stat(uint32_t blockptr, int firstLevel)
 {
@@ -379,8 +379,10 @@ void triple_indirect_stat(uint32_t blockptr, int firstLevel)
 }
  
 /*
- * Print out some information on the given directory inode
+ * Print out some information on the given directory inode.  Helpers for
+ * our directory stat functions are included.
  */
+
 void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
 {
     if (blockptr == 0)
@@ -415,6 +417,66 @@ void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
     free(datablock);
 }
 
+void single_indirect_directory(uint32_t blockptr, int dir_inode,
+ uint64_t *dir_index)
+{
+    if (blockptr == 0)
+        return;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr);
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {
+        if (datablock[n_blocks_read] != 0) { 
+            directory_stat(datablock[n_blocks_read], dir_inode, dir_index);     
+        }
+        n_blocks_read++;
+    }
+    free(datablock);
+}
+
+void double_indirect_directory(uint32_t blockptr, int dir_inode,
+ uint64_t *dir_index)
+{
+    if (blockptr == 0)
+        return;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr);
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {
+        if (datablock[n_blocks_read] != 0) {
+            single_indirect_directory(datablock[n_blocks_read], dir_inode, dir_index);
+        }
+        n_blocks_read++;
+    }
+    free(datablock);
+}
+
+void triple_indirect_directory(uint32_t blockptr, int dir_inode,
+ uint64_t *dir_index)
+{
+    if (blockptr == 0)
+        return;
+    uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
+    uint32_t *datablock = malloc(blocksize); // array of blockpointers
+    uint64_t n_blocks = blocksize / sizeof(blockptr);
+    pread_all(imgfd, datablock, blocksize, blockptr * blocksize);
+
+    uint64_t n_blocks_read = 0;
+    while (n_blocks_read < n_blocks) {
+        if (datablock[n_blocks_read] != 0) {
+            triple_indirect_directory(datablock[n_blocks_read], dir_inode, dir_index);
+        }
+        n_blocks_read++;
+    }
+    free(datablock);
+}
+ 
 /* iterates through all nonempty inodes in a group descriptor
  * NOTE: does another bitmap traversal because we don't actually want to go
  * through each bit in the bitmap like bitmap_stat() does. We only want to
@@ -468,11 +530,18 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
     // block pointers (15)
     uint64_t *dir_index = malloc(sizeof(uint64_t));
     *dir_index = 0;
-    for (int i = 0; i < EXT2_N_BLOCKS; i++) {
+    for (int i = 0; i < EXT2_N_BLOCKS; i++) { // TODO: investigate the number of blocks to traverse
         inode_info[i+11].fmt_str = "%x";
         inode_info[i+11].data = inode.i_block[i];
-	if ( (filetype == 'd') && (i < 12)) { // TODO: Implement indirect blocks
+	if (filetype == 'd') { 
+	    if (i < 12)
 		directory_stat(inode.i_block[i], inode_nr, dir_index);
+	    else if (i == 12)
+	        single_indirect_directory(inode.i_block[i], inode_nr, dir_index);
+	    else if (i == 13)
+		double_indirect_directory(inode.i_block[i], inode_nr, dir_index);
+	    else if (i == 14)
+		triple_indirect_directory(inode.i_block[i], inode_nr, dir_index);
 	}
 	if (i == 12) { // first indirect block
 		single_indirect_stat(inode.i_block[i], 1);
