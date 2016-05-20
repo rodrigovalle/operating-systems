@@ -87,6 +87,8 @@ manuals on - debugfs, pread
 
 Rough EXT2 file system documentation - http://www.nongnu.org/ext2-doc/ext2.html
 
+OSDev Wiki on Ext2 - http://wiki.osdev.org/Ext2
+
 Some structs were taken from the following header file for the ext2 file system
 (our TA said that it was fine to do so):
 

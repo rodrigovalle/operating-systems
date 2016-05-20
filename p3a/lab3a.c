@@ -1,3 +1,4 @@
+// Made with love by Rodrigo and Will
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -6,7 +7,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-#include <assert.h>  //for debug
 /* NOTE: #include <ext2fs/ext2_fs.h>
  * not allowed according to Prof. Kampe, but contains a lot of important
  * details about the ext2 file system, so I've read through it

@@ -1,6 +1,6 @@
 SHELL=/bin/sh
 CC=gcc
-CFLAGS=-Wall -Wextra -ggdb -pthread -Wno-missing-field-initializers
+CFLAGS=-Wall -Wextra -ggdb -Wno-missing-field-initializers
 LDFLAGS=-static
 SOURCES=lab3a.c
 OBJECTS=$(SOURCES:.c=.o)
@@ -14,9 +14,6 @@ $(TARGET): $(OBJECTS)
 %.o: %.c
 	$(CC) -c $< $(CFLAGS)
 
-test: tests/tests.c SortedList.c
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
-
 check: test
 	./test --color=never
 
@@ -27,6 +24,6 @@ clobber: clean
 	rm -f *.csv
 
 dist: clean
-	tar cvzf lab3a-104494120.tar.gz *.c *.h README Makefile *.png
+	tar cvzf lab3a-104494120.tar.gz *.c README Makefile
 
 .PHONY: check clean clobber dist check
