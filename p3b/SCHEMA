@@ -1,0 +1,25 @@
+From the p3a spec: https://goo.gl/
+
+super.csv           | group.csv          | bitmap.csv      | inode.csv        
+---------           | ---------          | ----------      | ---------        
+magic_number        | blocks_in_group    | bitmap_block    | inode_number     
+total_inodes        | free_blocks        | element_number  | file_type        
+total_blocks        | free_inodes        |                 | mode             
+block_size          | directories        |                 | owner            
+fragment_size       | inode_bitmap_block |                 | group            
+blocks_per_group    | block_bitmap_block |                 | ref_count        
+inodes_per_group    | inode_table_block  |                 | creation_time    
+fragments_per_group |                    |                 | modification_time
+first_data_block    |                    |                 | access_time      
+                    |                    |                 | file_size        
+                    |                    |                 | allocated_blocks 
+------------------------------------------------------------------------------
+directory.csv       | indirect.csv       |
+-------------       | ------------       |
+parent_inode_number | containing_block   |
+entry_number        | entry_number       |
+entry_length        | block_pointer      |
+name_length         |                    |
+entry_inode         |                    |
+name                |                    |
+------------------------------------------

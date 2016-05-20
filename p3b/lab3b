@@ -1,0 +1,114 @@
+#!/bin/python3
+import sys
+import csv
+
+# directory with csv files can be specified as the first argument
+# if no argument, assume csv files are in the current directory
+current_dir = ""
+if len(sys.argv) == 2:
+    current_dir = sys.argv[1];
+
+csv_files = [
+    "super.csv",
+    "group.csv",
+    "bitmap.csv",
+    "inode.csv",
+    "directory.csv",
+    "indirect.csv"
+]
+
+csv_fields = [
+  [ "magic_number",  # super.csv fields
+    "total_inodes",
+    "total_blocks",
+    "block_size",
+    "fragment_size",
+    "blocks_per_group",
+    "inodes_per_group",
+    "fragments_per_group",
+    "first_data_block" ],
+
+  [ "blocks_in_group",  # group.csv
+    "free_blocks",
+    "free_inodes",
+    "directories",
+    "inode_bitmap_block",
+    "block_bitmap_block",
+    "inode_table_block" ],
+
+  [ "bitmap_block",  # bitmap.csv - free inodes and blocks
+    "element_number" ],
+
+  [ "inode_number",  # inode.csv
+    "file_type",
+    "mode",
+    "owner",
+    "group",
+    "ref_count",
+    "creation_time",
+    "modification_time",
+    "access_time",
+    "file_size",
+    "allocated_blocks" ],
+
+  [ "parent_inode_number",  # directory.csv
+    "entry_number",
+    "entry_length",
+    "name_length",
+    "entry_inode",
+    "name" ],
+
+  [ "containing_block",  # indirect.csv
+    "entry_number",
+    "block_pointer" ]
+]
+
+# map csv files to their row-fields
+csv_w_fields = dict(zip(csv_files, csv_fields))
+
+# returns a dict reader iterable for the given csv file
+def get_reader(file):
+    csvfile = open(current_dir + file, newline='')
+
+    # for inode.csv, put the remaining blockpointer fields into an array with a
+    # key 'block_pointers' inside the dictionary returned
+    rest = None
+    if file == 'inode.csv':
+        rest = 'block_pointers'
+
+    return csv.DictReader(csvfile, fieldnames=csv_w_fields[file], restkey=rest)
+    # TODO: refactor csvfile management (opening, closing, access, etc.)
+
+
+# UNALLOCATED BLOCKS: blocks that are in use but also listed on the free bitmap
+def unallocated_blocks():
+    group_csv = get_reader('group.csv')
+    bitmap_csv = get_reader('bitmap.csv')
+    inode_csv = get_reader('inode.csv')
+
+    # list comprehension for all bitmaps representing free blocks in group.csv
+    block_bitmap_blocks = [row['block_bitmap_block'] for row in group_csv]
+    free_blocks = set()
+
+    # check which bits in block bitmaps represent free blocks
+    for row in bitmap_csv:
+        if row['bitmap_block'] in block_bitmap_blocks:
+            free_blocks.add(row['element_number'])
+
+    # look for all allocated blocks (in inode or indirect)
+    # TODO: probably have to handle indirect blocks too, i'll get there someday
+    # TODO: yeah this definitely still does something wrong
+    allocated_blocks = set()
+    for row in inode_csv:
+        for block in row['block_pointers']:
+            if block != '0':
+                allocated_blocks.add(block)
+
+    # isn't python wonderful?
+    print(allocated_blocks & free_blocks)
+
+def main():
+    unallocated_blocks()
+
+if __name__ == '__main__':
+    main()
