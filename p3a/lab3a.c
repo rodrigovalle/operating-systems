@@ -84,7 +84,7 @@ static int imgfd = -1;
 #define EXT2_FRAG_SIZE(s)   ((s).s_log_frag_size > 0 ? \
                                  1024 << (s).s_log_frag_size : \
                                  1024 >> -(s).s_log_frag_size)
-#define EXT2_DIRNAME_MASK(s) ((s).s_rev_level > 0 ? 0x00FF : 0xFFFF)
+#define EXT2_DIRNAME_MASK(s) ((s).s_rev_level >= 1 ? 0x00FF : 0xFFFF)
 
 // round up the numer of block groups
 #define DIV_ROUND_UP(i,j)   (((i) + ((j) - 1)) / (j))
@@ -513,6 +513,13 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
             break;
     }
 
+    uint64_t size = inode.i_size;
+    if (superblock.s_rev_level >= 1) {
+        uint64_t size_upper = (uint64_t)inode.i_size_high;
+        uint64_t size_lower = (uint64_t)inode.i_size;
+        size = (size_upper << 32) | size_lower;
+    }
+
     struct fmt_entry inode_info[INODE_FIELDS] = {
         {"%d", inode_nr},
         {"%c", filetype},
@@ -523,8 +530,8 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
         {"%x", inode.i_ctime},
         {"%x", inode.i_mtime},
         {"%x", inode.i_atime},
-        {"%d", inode.i_size}, // TODO: only represents the lower 32 bits of the file size (in bytes) for revision 1 and later
-        {"%d", EXT2_FS_BLOCKS(inode, superblock)},
+        {"%d", size},
+        {"%d", EXT2_FS_BLOCKS(inode, superblock)}
     };
 
     // block pointers (15)
