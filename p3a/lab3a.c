@@ -472,7 +472,7 @@ void triple_indirect_directory(uint32_t blockptr, int dir_inode,
     uint64_t n_blocks_read = 0;
     while (n_blocks_read < n_blocks) {
         if (datablock[n_blocks_read] != 0) {
-            triple_indirect_directory(datablock[n_blocks_read], dir_inode, dir_index);
+            double_indirect_directory(datablock[n_blocks_read], dir_inode, dir_index);
         }
         n_blocks_read++;
     }
