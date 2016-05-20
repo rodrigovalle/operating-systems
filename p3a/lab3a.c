@@ -528,11 +528,16 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
     };
 
     // block pointers (15)
-    uint64_t *dir_index = malloc(sizeof(uint64_t));
-    *dir_index = 0;
-    for (int i = 0; i < EXT2_N_BLOCKS; i++) { // TODO: investigate the number of blocks to traverse
+    for (int i = 0; i < EXT2_N_BLOCKS; i++) { 
         inode_info[i+11].fmt_str = "%x";
         inode_info[i+11].data = inode.i_block[i];
+    }
+    write_csv(INODE_CSV, inode_info, INODE_FIELDS);
+    
+    // process directories and indirect blocks for directory.csv and indirect.csv
+    uint64_t *dir_index = malloc(sizeof(uint64_t));
+    *dir_index = 0; 
+    for (uint64_t i = 0; i < EXT2_FS_BLOCKS(inode, superblock); i++) {
 	if (filetype == 'd') { 
 	    if (i < 12)
 		directory_stat(inode.i_block[i], inode_nr, dir_index);
@@ -552,8 +557,7 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
 	}
 	else if (i == 14)
 	    triple_indirect_stat(inode.i_block[i], 1);
-    }
-    write_csv(INODE_CSV, inode_info, INODE_FIELDS);
+    } 
     free(dir_index);
 }
 
