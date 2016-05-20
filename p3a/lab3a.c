@@ -55,7 +55,8 @@ enum output_fields {
  */
 struct fmt_entry {
     const char *fmt_str;
-    uint32_t    data;
+    uint64_t data;
+    uint32_t len;   // optional, used to contain string length
 };
 
 // file descriptor reference to the open disk image we're analyzing
@@ -64,7 +65,6 @@ static int imgfd = -1;
 /* NOTE: these #define are for bitmap_stat() */
 #define BLOCK_BITMAP    0
 #define INODE_BITMAP    1
-#define TOP_BIT(byte)   ((byte) & (0x08))
 
 /* EXT2 DEFINITIONS
  * these definitions taken directly from <ext2fs/ext2_fs.h>
@@ -84,7 +84,7 @@ static int imgfd = -1;
 #define EXT2_FRAG_SIZE(s)   ((s).s_log_frag_size > 0 ? \
                                  1024 << (s).s_log_frag_size : \
                                  1024 >> -(s).s_log_frag_size)
-#define EXT2_DIR_NAME_LEN(s) ((s).s_rev_level > 0 ? 0x00FF : 0xFFFF)
+#define EXT2_DIRNAME_MASK(s) ((s).s_rev_level > 0 ? 0x00FF : 0xFFFF)
 
 // round up the numer of block groups
 #define DIV_ROUND_UP(i,j)   (((i) + ((j) - 1)) / (j))
@@ -173,11 +173,11 @@ struct ext2_inode {
             uint32_t  h_i_translator;
         } hurd1;
     } osd1;         /* OS dependent 1 */
-    uint32_t   i_block[EXT2_N_BLOCKS];     /* Pointers to blocks */
-    uint32_t   i_generation;    /* File version (for NFS) */
-    uint32_t   i_file_acl;      /* File ACL */
-    uint32_t   i_size_high;     /* Formerly i_dir_acl, directory ACL */
-    uint32_t   i_faddr;         /* Fragment address */
+    uint32_t   i_block[EXT2_N_BLOCKS];  /* Pointers to blocks */
+    uint32_t   i_generation;            /* File version (for NFS) */
+    uint32_t   i_file_acl;              /* File ACL */
+    uint32_t   i_size_high;             /* Formerly i_dir_acl, directory ACL */
+    uint32_t   i_faddr;                 /* Fragment address */
     union {
         struct {
             uint16_t   l_i_blocks_hi;
@@ -238,7 +238,11 @@ static void write_csv(int file, const struct fmt_entry *entries, int n)
 {
     int i = 0;
     while (1) {
-        fprintf(csv_files[file], entries[i].fmt_str, entries[i].data);
+        if (strcmp(entries[i].fmt_str, "\"%.*s\"") == 0) {
+            fprintf(csv_files[file], entries[i].fmt_str, entries[i].len, entries[i].data);
+        } else {
+            fprintf(csv_files[file], entries[i].fmt_str, entries[i].data);
+        }
         i++;
         if (i == n)
             break;
@@ -305,7 +309,7 @@ void superblock_stat()
 void single_indirect_stat(uint32_t blockptr, int firstLevel)
 {
     if ((blockptr == 0) && (firstLevel == 0))
-	return;
+        return;
     uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint32_t *datablock = malloc(blocksize); // array of blockpointers
     uint64_t n_blocks = blocksize / sizeof(blockptr);
@@ -329,7 +333,7 @@ void single_indirect_stat(uint32_t blockptr, int firstLevel)
 void double_indirect_stat(uint32_t blockptr, int firstLevel)
 {    
     if ((blockptr == 0) && (firstLevel == 0))
-        return;	
+        return;
     uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint32_t *datablock = malloc(blocksize); // array of blockpointers
     uint64_t n_blocks = blocksize / sizeof(blockptr); 
@@ -379,14 +383,12 @@ void triple_indirect_stat(uint32_t blockptr, int firstLevel)
 }
  
 /*
- * Print out some information on the given directory inode.  Helpers for
- * our directory stat functions are included.
+ * Print out some information on the given directory inode.
  */
-
-void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
+void directory_stat(uint32_t blockptr, uint64_t dir_inode, uint64_t *dir_index)
 {
     if (blockptr == 0)
-	return; 
+        return;
     uint64_t blocksize = EXT2_BLOCK_SIZE(superblock);
     uint64_t entry_off = 0;
     void *datablock = malloc(blocksize);
@@ -396,29 +398,29 @@ void directory_stat(uint32_t blockptr,int dir_inode, uint64_t *dir_index)
 
 	while (entry_off < blocksize) {
 	    struct ext2_dir_entry *entry = datablock + entry_off;
+        uint32_t name_len = entry->name_len & EXT2_DIRNAME_MASK(superblock);
 
 	    if (entry->inode != 0) {
-		struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
-		    {"%u", dir_inode},
-		    {"%u", *dir_index},
-		    {"%u", entry->rec_len},
-		    {"%u", (entry->name_len & EXT2_DIR_NAME_LEN(superblock))},
-		    {"%u", entry->inode},
-		    {"\"%s\"", entry->name}  // TODO: handle null characters too
-		};
-		write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
+            struct fmt_entry directoryentry_info[DIRECTORY_FIELDS] = {
+                {"%u", dir_inode},
+                {"%u", *dir_index},
+                {"%u", entry->rec_len},
+                {"%u", name_len},
+                {"%u", entry->inode},
+                {"\"%.*s\"", (uint64_t)entry->name, name_len}
+            };
+            write_csv(DIRECTORY_CSV, directoryentry_info, DIRECTORY_FIELDS);
 	    }
 
 	    entry_off += entry->rec_len;
 	    *dir_index = *dir_index + 1;
 	}
     
-
     free(datablock);
 }
 
 void single_indirect_directory(uint32_t blockptr, int dir_inode,
- uint64_t *dir_index)
+                               uint64_t *dir_index)
 {
     if (blockptr == 0)
         return;
@@ -438,7 +440,7 @@ void single_indirect_directory(uint32_t blockptr, int dir_inode,
 }
 
 void double_indirect_directory(uint32_t blockptr, int dir_inode,
- uint64_t *dir_index)
+                               uint64_t *dir_index)
 {
     if (blockptr == 0)
         return;
@@ -458,7 +460,7 @@ void double_indirect_directory(uint32_t blockptr, int dir_inode,
 }
 
 void triple_indirect_directory(uint32_t blockptr, int dir_inode,
- uint64_t *dir_index)
+                               uint64_t *dir_index)
 {
     if (blockptr == 0)
         return;
@@ -484,7 +486,6 @@ void triple_indirect_directory(uint32_t blockptr, int dir_inode,
  * use the correct index into the group's local inode table.
  */
 
-// TODO: large inode structs? checkout ext2_fs.h
 /* Takes an inode table block and a (nonempty) global inode number, and a local
  * index (relative to the block group) to examine */
 void inode_stat(uint64_t itable_block, uint64_t inode_nr,
@@ -506,7 +507,6 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
             break;
         case EXT2_S_IFDIR:
             filetype = 'd';
-           // directory_stat(inode_nr);
             break;
         case EXT2_S_IFLNK:
             filetype = 's';
@@ -538,25 +538,26 @@ void inode_stat(uint64_t itable_block, uint64_t inode_nr,
     uint64_t *dir_index = malloc(sizeof(uint64_t));
     *dir_index = 0; 
     for (uint64_t i = 0; i < EXT2_FS_BLOCKS(inode, superblock); i++) {
-	if (filetype == 'd') { 
-	    if (i < 12)
-		directory_stat(inode.i_block[i], inode_nr, dir_index);
-	    else if (i == 12)
-	        single_indirect_directory(inode.i_block[i], inode_nr, dir_index);
-	    else if (i == 13)
-		double_indirect_directory(inode.i_block[i], inode_nr, dir_index);
-	    else if (i == 14)
-		triple_indirect_directory(inode.i_block[i], inode_nr, dir_index);
-	}
-	if (i == 12) { // first indirect block
-		single_indirect_stat(inode.i_block[i], 1);
-	}
-	else if (i == 13) {
-     	    //printf("%x\n", inode.i_block[i]); 
-	    double_indirect_stat(inode.i_block[i], 1);
-	}
-	else if (i == 14)
-	    triple_indirect_stat(inode.i_block[i], 1);
+        if (filetype == 'd') { 
+            if (i < 12)
+                directory_stat(inode.i_block[i], inode_nr, dir_index);
+            else if (i == 12)
+                single_indirect_directory(inode.i_block[i], inode_nr, dir_index);
+            else if (i == 13)
+                double_indirect_directory(inode.i_block[i], inode_nr, dir_index);
+            else if (i == 14)
+                triple_indirect_directory(inode.i_block[i], inode_nr, dir_index);
+
+        } if (i == 12) { // first indirect block
+            single_indirect_stat(inode.i_block[i], 1);
+
+        } else if (i == 13) {
+                //printf("%x\n", inode.i_block[i]); 
+            double_indirect_stat(inode.i_block[i], 1);
+
+        } else if (i == 14) {
+            triple_indirect_stat(inode.i_block[i], 1);
+        }
     } 
     free(dir_index);
 }
@@ -661,13 +662,6 @@ void groupdesc_stat()
         uint64_t blk_off = i * superblock.s_blocks_per_group +
                              superblock.s_first_data_block;
 
-        // the spec wants us to iterate through every entry in the bitmap,
-        // disregarding the inode and block counts proposed in the superblock.
-        // this is a little screwy in my opinion because we're processing a
-        // bunch of extra bits in the bitmap that mean nothing
-        // eg. in the last block group, the number of inodes represented would
-        // be s_inodes_count % s_inodes_per_group but we treat it as if the
-        // block is full
         bitmap_stat(group.bg_block_bitmap, n_blocks_g, blk_off, BLOCK_BITMAP);
         bitmap_stat(group.bg_inode_bitmap, n_inodes_g, ino_off, INODE_BITMAP);
         groupdesc_off += sizeof(struct ext2_group_desc);
