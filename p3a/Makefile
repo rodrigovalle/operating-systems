@@ -1,6 +1,6 @@
 SHELL=/bin/sh
 CC=gcc
-CFLAGS=-Wall -Wextra -ggdb -pthread
+CFLAGS=-Wall -Wextra -ggdb -pthread -Wno-missing-field-initializers
 LDFLAGS=-static
 SOURCES=lab3a.c
 OBJECTS=$(SOURCES:.c=.o)
