@@ -1,0 +1,103 @@
+Students:
+Rodrigo Valle, UID = 104-494-120
+William Hsiao, UID = 004-474-250
+
+Slip Day usage:
+Theano made a post that said that the professor
+said that  partners can pool together their slip days.
+
+1 of William Hsiao's
+2 of Rodrigo Valle's
+
+for a total of:
+
+3 slip days.
+
+////////////////////////////////////////////////////////////////
+Description of included files:
+
+lab3a.c:
+
+This is the source code of our project.  It does what the spec says it should
+do.  In particular, it takes, as an arugment, the disk image of an EXT2
+file system.  It traverses the data of said image and comes up with six
+csv files:
+
+superblock.csv: this csv file contains data regarding the superblock of
+our file system.
+
+group.csv: this csv file contains information for the group descriptors
+of our file system
+
+bitmap.csv: this csv contains the list of free inodes and free blocks in
+the system.
+
+inode.csv:  this csv contains relevant information about the inodes.
+
+directory.csv: this csv contains the information about valid and allocated
+entries in any inodes marked as directories.  It does also work with
+indirect block pointers.  Note that the entry number for indirect block pointers
+is questionable because the spec doesn't explicitly cover them well.
+
+indirect.csv: this csv contains info about any indirect block pointers in
+the system, bar ones that are == NULL (except when accessed through
+the top level directory inodes).
+
+So our program is really a more primitive version of debugfs.
+
+Makefile: This is self-explanatory it has a couple of different targets
+
+default - compiles our program and makes an executable
+clean - gets rid of .o files and the executable created by compilation
+clobber - removes .csv files from the directory
+dist - makes the tar file for submission
+
+README: contains some documentation regarding the included files,
+limitations, testing methodology, use of slip days, student info,
+and references.
+
+///////////////////////////////////////////////////////////////
+Limitations
+
+Our program uses buffered output, so any fatal error to the program might
+potentially result in incomplete or empty csv files being generated.
+This is probably the correct behavior anyways.
+
+The field dir_entry for directory.csv is not well documented in the spec
+as far as its values are concerned for indirect block pointers.  This is made
+more serious by the fact that the example file system given to us has no
+directories with enough files to have to use indirect block pointers.  Thus,
+giving us no way to see what the true proper behavior is.  We just went
+with something that seemed reasonable.
+
+///////////////////////////////////////////////////////////////
+Testing Methodology:
+
+We tested mainly using the example file system image and the example
+csv outputs (by diffing them with ours).  We played around with modifying
+the file system through mounting it, but not too much testing was done
+that way.
+
+///////////////////////////////////////////////////////////////
+References:
+
+the spec - https://docs.google.com/document/d/16agy3BiR6q_OLLnWTrVikmEvWMeW51y4724WdFCmg38/edit#
+
+manuals on - debugfs, pread
+
+Rough EXT2 file system documentation - http://www.nongnu.org/ext2-doc/ext2.html
+
+Some structs were taken from the following header file for the ext2 file system
+(our TA said that it was fine to do so):
+
+https://fossies.org/dox/e2fsprogs-1.42.13/ext2__fs_8h_source.html
+
+Do note that our program has macros in it, but they were all created by us usingthe knowledge in the nongnu link above.  These macros were used by us to 
+prevent the use of excessive global variables in our code and should have
+little resemblance to the ones in the official header file.
+
+Our wonderful TA.
+
+Theano's post regarding slip days: https://piazza.com/class/imeeybs22db6n?cid=346
+///////////////////////////////////////////////////////////////
+
