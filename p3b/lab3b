@@ -1,8 +1,8 @@
 #!/bin/python3
 import sys
 import pprint
-from helper import *
-from csv_reader import *
+from helper import block, inode
+from csv_helper import csv_reader
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -47,11 +47,26 @@ def main():
     # build a simple model of the file system, which we'll check for
     # inconsistencies
     r = csv_reader(current_dir)
-    group_csv = r.get_reader('group')
-    bitmap_csv = r.get_reader('bitmap')
-    inode_csv = r.get_reader('inode')
 
-    inodeBitmapBlocks = []
+    super_csv = r.entry_list('super.csv')
+    first_block = super_csv[0]['first_data_block']
+
+    group_csv = r.entry_list('group.csv')
+    bitmap_csv = r.entry_list('bitmap.csv')
+    inode_csv = r.entry_list('inode.csv')
+
+    inodeBitmapBlocks = [block(0)]
+
+    if first_block != 0:
+        inodeBitmapBlocks.append(block(first_block))
+
+    for line in group_csv:
+        inodeBitmapBlocks.append(block(line['inode_bitmap_block']))
+        inodeBitmapBlocks.append(block(line['block_bitmap_block']))
+        inodeBitmapBlocks.append(block(line['inode_table_block']))
+    
+    for b in inodeBitmapBlocks:
+        print(b.block_number)
 
     #blockBimtapBlocks = []
     #inodeFreeList
