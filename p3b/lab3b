@@ -48,27 +48,28 @@ def main():
     # inconsistencies
     r = csv_reader(current_dir)
 
-    super_csv = r.entry_list('super.csv')
-    first_block = super_csv[0]['first_data_block']
-
     group_csv = r.entry_list('group.csv')
     bitmap_csv = r.entry_list('bitmap.csv')
     inode_csv = r.entry_list('inode.csv')
 
-    inodeBitmapBlocks = [block(0)]
+    blockBitmapBlocks = []
+    inodeBitmapBlocks = []
 
-    if first_block != 0:
-        inodeBitmapBlocks.append(block(first_block))
+    inodeAllocated = {} # <key=inode_num, value=Inode class>
+    blockAllocated = {} # <key=block_num, value=Block class>
 
     for line in group_csv:
+        blockBitmapBlocks.append(block(line['block_bitmap_block']))
         inodeBitmapBlocks.append(block(line['inode_bitmap_block']))
-        inodeBitmapBlocks.append(block(line['block_bitmap_block']))
-        inodeBitmapBlocks.append(block(line['inode_table_block']))
     
-    for b in inodeBitmapBlocks:
-        print(b.block_number)
+    for line in bitmap_csv:
+        n = line['element_number']
+        if line['bitmap_block'] in blockBitmapBlocks:  # found free block
+            blockAllocated[n] = block(n)
 
-    #blockBimtapBlocks = []
+        elif line['bitmap_block'] in inodeBitmapBlocks:  # found free inode
+            inodeAllocated[n] = inode(n)
+
     #inodeFreeList
     #blockFreeList
 
