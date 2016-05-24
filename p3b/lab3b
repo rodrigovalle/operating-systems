@@ -58,18 +58,30 @@ def main():
     inodeAllocated = {} # <key=inode_num, value=Inode class>
     blockAllocated = {} # <key=block_num, value=Block class>
 
-    for line in group_csv:
-        blockBitmapBlocks.append(block(line['block_bitmap_block']))
-        inodeBitmapBlocks.append(block(line['inode_bitmap_block']))
+    for group in group_csv:
+        blockBitmapBlocks.append(block(group['block_bitmap_block']))
+        inodeBitmapBlocks.append(block(group['inode_bitmap_block']))
     
-    for line in bitmap_csv:
-        n = line['element_number']
-        if line['bitmap_block'] in blockBitmapBlocks:  # found free block
+    for entry in bitmap_csv:
+        n = entry['element_number']
+        if entry['bitmap_block'] in blockBitmapBlocks:  # found free block
             blockAllocated[n] = block(n)
 
-        elif line['bitmap_block'] in inodeBitmapBlocks:  # found free inode
+        elif entry['bitmap_block'] in inodeBitmapBlocks:  # found free inode
             inodeAllocated[n] = inode(n)
 
+    for inode in inode_csv:
+        inode_nr = inode['inode_number']
+
+        indirect_transform = {12: 1, 13: 2, 14: 3} # indirect blocks
+
+        for i, block in enumerate(line['block_pointers']):
+            indirectblk = 0
+            if i >= 12:
+                indirectblk = indirect_transform[i]
+
+            blockAllocated[block].add_reference(inode_nr, indirectblk, #entrynum?)
+            
     #inodeFreeList
     #blockFreeList
 
