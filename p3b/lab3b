@@ -4,18 +4,15 @@ import pprint
 #from helper import block, inode
 from csv_helper import csv_reader
 
-# globals
-pp = pprint.PrettyPrinter(indent=4)
-cur_dir = parse_directory()
-r = csv_reader(cur_dir)
-
 # directory with csv files can be specified as the first argument
 # if no argument, assume csv files are in the current directory
-def parse_directory():
-    directory = ""
-    if len(sys.argv) == 2:
-        directory = sys.argv[1];
-    return directory
+cur_dir = ""
+if len(sys.argv) == 2:
+    cur_dir = sys.argv[1]
+
+# globals
+pp = pprint.PrettyPrinter(indent=4)
+r = csv_reader(cur_dir)
 
 def main():
 
@@ -58,23 +55,40 @@ def main():
         try:
             for ptr in inode['block_pointers'][:12]:
                 if ptr == 0:  # should we keep traversing the array or stop?
-                    raise NullPtrException
+                    raise KeyError
 
                 if ptr in blockAllocated:
+                    print(ptr)
                     blockAllocated[ptr] += 1
                 else:
                     blockAllocated[ptr] = 1
 
             # indirect blocks
             for lvl, ptr in enumerate(inode['block_pointers'][12:], start=1):
-                for indirect in indirect_csv:
+                for sub_block in follow_indirect(ptr, lvl):
+                    if ptr == 0:
+                        raise KeyError
 
-def follow_indirect(blk):
+                    if ptr in blockAllocated:
+                        print(ptr)
+                        blockAllocated[sub_block] += 1
+                    else:
+                        blockAllocated[sub_block] = 1
+        except KeyError:
+            pass
+
+def follow_indirect(blk, lvl):
     indirect_csv = r.entry_list('indirect.csv')
-    
+    allocated_blocks = []
+
     for entry in indirect_csv:
         if blk == entry['containing_block']:
+            sub_block = entry['block_pointer']
+            allocated_blocks.append(sub_block)
+            if lvl == 1:
+                allocated_blocks += follow_indirect(sub_block, lvl - 1)
 
+    return allocated_blocks
 
 if __name__ == '__main__':
     main()
