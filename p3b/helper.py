@@ -11,9 +11,9 @@ class inode:
 
 
 class block:
-    def __init__(self, block_nr):
+    def __init__(self, block_nr, refs=0):
         self.block_number = block_nr
-        self.refcount = 0
+        self.refcount = refs
         self.referenced_by = []
     
     def add_reference(self, inode, indirectblocknum, entrynum):

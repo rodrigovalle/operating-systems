@@ -1,89 +1,80 @@
 #!/bin/python3
 import sys
 import pprint
-from helper import block, inode
+#from helper import block, inode
 from csv_helper import csv_reader
 
+# globals
 pp = pprint.PrettyPrinter(indent=4)
+cur_dir = parse_directory()
+r = csv_reader(cur_dir)
 
 # directory with csv files can be specified as the first argument
 # if no argument, assume csv files are in the current directory
-current_dir = ""
-if len(sys.argv) == 2:
-    current_dir = sys.argv[1];
-
-
-# UNALLOCATED BLOCKS: blocks that are in use but also listed on the free bitmap
-#def unallocated_blocks():
-#    group_csv = get_reader('group.csv')
-#    bitmap_csv = get_reader('bitmap.csv')
-#    inode_csv = get_reader('inode.csv')
-#
-#    # list comprehension for all bitmaps representing free blocks in group.csv
-#    block_bitmap_blocks = [row['block_bitmap_block'] for row in group_csv]
-#    free_blocks = set()
-#
-#    # check which bits in block bitmaps represent free blocks
-#    for row in bitmap_csv:
-#        if row['bitmap_block'] in block_bitmap_blocks:
-#            free_blocks.add(int(row['element_number'], 16))
-#
-#    # look for all allocated blocks (in inode or indirect)
-#    # TODO: probably have to handle indirect blocks too, i'll get there someday
-#    # TODO: yeah this definitely still does something wrong
-#    allocated_blocks = set()
-#    for row in inode_csv:
-#        for block in row['block_pointers']:
-#            if block != '0':
-#                allocated_blocks.add(int(block, 16))
-#
-#    indirect_blocks = set()
-#    #for row in indirect_csv:
-#        #for
-#    # isn't python wonderful?
-#    pp.pprint(allocated_blocks & free_blocks)
+def parse_directory():
+    directory = ""
+    if len(sys.argv) == 2:
+        directory = sys.argv[1];
+    return directory
 
 def main():
-    # build a simple model of the file system, which we'll check for
-    # inconsistencies
-    r = csv_reader(current_dir)
 
+    super_csv = r.entry_list('super.csv')
     group_csv = r.entry_list('group.csv')
     bitmap_csv = r.entry_list('bitmap.csv')
     inode_csv = r.entry_list('inode.csv')
 
+    # build a model of the file system, which we'll check for inconsistencies
     blockBitmapBlocks = []
     inodeBitmapBlocks = []
+
+    blockFreeList = []
+    inodeFreeList = []
 
     inodeAllocated = {} # <key=inode_num, value=Inode class>
     blockAllocated = {} # <key=block_num, value=Block class>
 
+    max_inode_nr = super_csv[0]['total_inodes']
+    max_block_nr = super_csv[0]['total_blocks'] - 1  # account for index offset
+
+
     for group in group_csv:
-        blockBitmapBlocks.append(block(group['block_bitmap_block']))
-        inodeBitmapBlocks.append(block(group['inode_bitmap_block']))
+        blockBitmapBlocks.append(group['block_bitmap_block'])
+        inodeBitmapBlocks.append(group['inode_bitmap_block'])
     
+
     for entry in bitmap_csv:
         n = entry['element_number']
         if entry['bitmap_block'] in blockBitmapBlocks:  # found free block
-            blockAllocated[n] = block(n)
-
+            blockFreeList.append(n)
         elif entry['bitmap_block'] in inodeBitmapBlocks:  # found free inode
-            inodeAllocated[n] = inode(n)
+            inodeFreeList.append(n)
+
 
     for inode in inode_csv:
         inode_nr = inode['inode_number']
 
-        indirect_transform = {12: 1, 13: 2, 14: 3} # indirect blocks
+        # direct blocks
+        try:
+            for ptr in inode['block_pointers'][:12]:
+                if ptr == 0:  # should we keep traversing the array or stop?
+                    raise NullPtrException
 
-        for i, block in enumerate(line['block_pointers']):
-            indirectblk = 0
-            if i >= 12:
-                indirectblk = indirect_transform[i]
+                if ptr in blockAllocated:
+                    blockAllocated[ptr] += 1
+                else:
+                    blockAllocated[ptr] = 1
 
-            blockAllocated[block].add_reference(inode_nr, indirectblk, #entrynum?)
-            
-    #inodeFreeList
-    #blockFreeList
+            # indirect blocks
+            for lvl, ptr in enumerate(inode['block_pointers'][12:], start=1):
+                for indirect in indirect_csv:
+
+def follow_indirect(blk):
+    indirect_csv = r.entry_list('indirect.csv')
+    
+    for entry in indirect_csv:
+        if blk == entry['containing_block']:
+
 
 if __name__ == '__main__':
     main()

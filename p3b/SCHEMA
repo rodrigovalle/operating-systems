@@ -13,7 +13,7 @@ fragments_per_group |                    |                 | modification_time
 first_data_block    |                    |                 | access_time      
                     |                    |                 | file_size        
                     |                    |                 | allocated_blocks 
-                    |                    |                 | block_pointers
+                    |                    |                 | block_pointers (array)
 ------------------------------------------------------------------------------
 directory.csv       | indirect.csv       |
 -------------       | ------------       |
