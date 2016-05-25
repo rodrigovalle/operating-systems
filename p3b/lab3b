@@ -23,7 +23,7 @@ def main():
     group_csv = r.entry_list('group.csv')
     bitmap_csv = r.entry_list('bitmap.csv')
     inode_csv = r.entry_list('inode.csv')
-
+    directory_csv = r.entry_list('directory.csv')
     # build a model of the file system, which we'll check for inconsistencies
     blockBitmapBlocks = []
     inodeBitmapBlocks = []
@@ -33,6 +33,8 @@ def main():
 
     inodeAllocated = {} # <key=inode_num, value=Inode class>
     blockAllocated = {} # <key=block_num, value=Block class>
+
+    directoryTable {} # <key=child_inode_num, value=parent_inode_num>
 
     max_inode_nr = super_csv[0]['total_inodes']
     max_block_nr = super_csv[0]['total_blocks'] - 1  # account for index offset
@@ -52,7 +54,7 @@ def main():
 
 
     for inode in inode_csv:
-        inode_nr = inode['inode_number']
+        inode_nr = inode['inode_number'] 
 
         # direct blocks
         try:
@@ -68,7 +70,65 @@ def main():
             # indirect blocks
             for lvl, ptr in enumerate(inode['block_pointers'][12:], start=1):
                 for indirect in indirect_csv:
+    
+    # directory csv parsing
+    for direct in directory_csv:
+        child_inode_num = direct['entry_inode']
+        parent_inode_num = direct['parent_inode_number']
+        entry_num = direct['entry_number']
 
+        if child_inode_num != parent_inode_num or direct['name'] == '.':
+            directoryTable[child_inode_num]] = parent_inode_num
+
+        if child_inode_num in inodeAllocated:
+            directoryTable[child_inode_num].getvalue().add_reference(parent_inode_num,
+                    entry_num)
+        else:
+            raise UnallocatedInodeException
+
+        if entry_num == 0 and child_inode_num != parent_inode_num:
+            raise IncorrectEntryException
+        else if (entry_num == 1 and child_inode_num !=
+                directoryTable[parent_inode_num])
+            raise IncorrectEntryException
+    # end directory csv parsing
+
+    # assorted checking
+    for i in inodeAllocated: # check to see if an inode is allocated mult times
+        linkCnt = len(i.referenced_by) # or if it has improper link counts
+        if i.inode_number > 10 and linkCnt == 0
+            raise MissingInodeError
+        else if linkCnt != i.refcount
+            raise IncorrectLinkCount
+
+    for i in inodeFreeList: # check to see if an inode is in both lists
+        for x in inodeAllocated:
+            if i.inode_number == x.inode_number:
+                raise UnallocatedInodeError
+
+    for n in [11, max_inode_nr]: # check to see that all inodes are accounted for
+        inList = 0
+        
+        for i in inodeFreeList:
+            if n == i.inode_number:
+                inList = 1
+        
+        for k in inodeAllocated:
+            if k == i.inode_number:
+                inList = 1
+
+        if (inList != 1):
+            raise MissingInode
+
+    for b in blockAllocated: # is a block referenced more than one time?
+        if len(b.referenced_by) > 1:
+            raise DuplicateAllocatedBlock
+
+    for b in blockAllocated: # is a block in both free and allocated?
+        for k in blockFreeList:
+            if b.block_number == k.block_number:
+                raise UnallocatedBlockError
+    #end assorted checking
 def follow_indirect(blk):
     indirect_csv = r.entry_list('indirect.csv')
     
