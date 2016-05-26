@@ -5,12 +5,9 @@ William Hsiao, UID = 004-474-250
 
 Command to run program:
 
-./lab3b directory // where directory is the directory containing the 6 csv files
-
-alternatively, use:
-
 python3 lab3b directory // where directory is the directory containing the 6 csv
-                        // files
+                        // files.  no argument means that it will be run with
+                        // the assumption of the current directory
 or even this:
 
 make run
@@ -44,6 +41,9 @@ version of fsck.  It outputs these errors to a file named "lab3b_check.txt".
 3. README - this file is the one you're reading right now.  It contains
 information regarding the description of the included files, the student names/
 ids, and a list of references used during the project.
+
+4. helper python functions - anything else with .py as an extension are files
+that help our main lab3b python script run
 
 References:
 
