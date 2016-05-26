@@ -36,6 +36,7 @@ def main():
     blockAllocated = {} # <key=block_num, value=Block class>
     directoryTable = {}
 
+    inodes_per_group = super_csv[0]['inodes_per_group']
     max_inode_nr = super_csv[0]['total_inodes']
     max_block_nr = super_csv[0]['total_blocks'] - 1  # account for index offset
 
@@ -58,7 +59,7 @@ def main():
     # populate blockAllocated and inodeAllocated
     for inode in inode_csv:
         inode_nr = inode['inode_number']
-        inodeAllocated[inode_nr] = obj.inode(inode_nr)
+        inodeAllocated[inode_nr] = obj.inode(inode_nr, inode['ref_count'])
 
         for i, ptr in enumerate(inode['block_pointers']):
             if ptr == 0:  # should we keep traversing the array or stop?
@@ -68,7 +69,7 @@ def main():
             if i < 12:
                 if ptr not in blockAllocated:
                     blockAllocated[ptr] = obj.block(ptr)
-                blockAllocated[ptr].add_reference((inode_nr, 0))
+                blockAllocated[ptr].add_reference((inode_nr, i))
 
             # indirect blocks
             elif i >= 12:
@@ -81,26 +82,97 @@ def main():
                         blockAllocated[sub_blk_ptr] = obj.block(sub_blk_ptr)
                     blockAllocated[sub_blk_ptr].add_reference(sub_block)
 
+    referencedInodes = {}
     # populate inode reference lists in inodeAllocated
     for dir_entry in directory_csv:
         child_inode_num = dir_entry['entry_inode']
         parent_inode_num = dir_entry['parent_inode_number']
         entry_num = dir_entry['entry_number']
+        inode_name = dir_entry['name']
 
         # populate the directory table
-        if child_inode_num != parent_inode_num or dir_entry['name'] == '.':
+        if parent_inode_num != child_inode_num or parent_inode_num == 2:
             directoryTable[child_inode_num] = parent_inode_num
 
-        # if our child is properly allocated, then add the parent inode to its
-        # referenced by list
+        # update inodeAllocated
         if child_inode_num in inodeAllocated:
-            inodeAllocated[child_inode_num].add_reference((parent_inode_num, entry_num))
-        else:
-            warn.UNALLOCATED_INODE(child_inode_num, parent_inode_num, entry_num)
+            inodeAllocated[child_inode_num].add_reference(
+                (parent_inode_num, entry_num)
+            )
 
-        # checks for the "." and ".." files
+        # update the list of all inodes referenced by directories
+        if child_inode_num not in referencedInodes:
+            referencedInodes[child_inode_num] = obj.inode(child_inode_num, 0)
+        referencedInodes[child_inode_num].add_reference(
+            (parent_inode_num, entry_num)
+        )
+
+        # checks for the "." and ".." entries
         if entry_num == 0 and child_inode_num != parent_inode_num:
-            warn.UNALLOCATED_INODE
+            warn.INCORRECT_DIR_ENTRY(
+                parent_inode_num,
+                inode_name,
+                child_inode_num,
+                parent_inode_num
+            )
+        elif entry_num == 1 and child_inode_num != directoryTable[parent_inode_num]:
+            warn.INCORRECT_DIR_ENTRY(
+                parent_inode_num,
+                inode_name,
+                child_inode_num,
+                directoryTable[parent_inode_num]
+            )
+    
+    for inode_ref_by_dir in referencedInodes.values():
+        if inode_ref_by_dir.inode_number not in inodeAllocated:
+            warn.UNALLOCATED_INODE(
+                inode_ref_by_dir.inode_number,
+                inode_ref_by_dir.referenced_by
+            )
+
+
+    for i in inodeAllocated.values():
+        linkCnt = len(i.referenced_by)
+        if i.inode_number > 10 and linkCnt == 0:
+            warn.MISSING_INODE(
+                i.inode_number,
+                group_csv[i.inode_number // inodes_per_group]['inode_bitmap_block']
+            )
+        elif linkCnt != i.refcount:
+            warn.INODE_LINKCOUNT(
+                i.inode_number,
+                i.refcount,
+                linkCnt
+            )
+
+# ???
+#    for i in inodeFreeList:
+#        if i.inode_number in inode ^ :
+#            warn.UNALLOCATED_INODE_ERROR(
+#                i.inode_number,
+#            )
+
+    for n in range(11, max_inode_nr):
+        if n not in inodeFreeList and n not in inodeAllocated:
+            warn.MISSING_INODE(
+                n,
+                group_csv[n // inodes_per_group]['inode_bitmap_block']
+            )
+
+    for b in blockAllocated.values():
+        if len(b.referenced_by) > 1:
+            reflist = [ref for ref in b.referenced_by]
+            warn.DUPLICATELY_ALLOCATED_BLOCK(
+                b.block_number,
+                reflist
+            )
+
+    for b in blockAllocated.values():
+        if b.block_number in blockFreeList:
+            warn.UNALLOCATED_BLOCK(
+                b.block_number,
+                b.referenced_by
+            )
 
 def follow_indirect(blk, lvl):
     indirect_csv = r.entry_list('indirect.csv')

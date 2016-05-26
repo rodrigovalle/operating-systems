@@ -1,12 +1,13 @@
-unallocated_inode = "UNALLOCATED INODE < {} > REFERENCED BY DIRECTORY < {} > ENTRY < {} >"
-unallocated_block = "UNALLOCATED BLOCK < {} > REFERENCED BY INODE < {} > ENTRY < {} >"
+unallocated_inode = "UNALLOCATED INODE < {} > REFERENCED BY"
+unallocated_block = "UNALLOCATED BLOCK < {} > REFERENCED BY"
+dup_alloc_block = "MULTIPLY REFERENCED BLOCK < {} > BY"
 incorrect_entry = "INCORRECT ENTRY IN < {} > NAME < {} > LINK TO < {} > SHOULD BE < {} >"
 inode_linkcount = "LINKCOUNT < {} > IS < {} > SHOULD BE < {} >"
 missing_inode = "MISSING INODE < {} > SHOULD BE IN FREE LIST < {} >"
 block_linkcount = "LINKCOUNT < {} > SHOULD BE < {} >"
 
-multiply_ref_blk = "MULTIPLY REFERENCED BLOCK < {} > BY "
 inode_ref = "INODE < {} > ENTRY < {} >"
+directory_ref = "DIRECTORY < {} > ENTRY < {} >"
 
 
 class warning:
@@ -16,23 +17,42 @@ class warning:
     def __del__(self):
         self.outfile.close()
 
-    def UNALLOCATED_INODE(self, inode_nr, dir_num, dir_entry):
+    def UNALLOCATED_INODE(self, inode_nr, dir_ref_list):
         print(
             unallocated_inode.format(
-                inode_nr,
-                dir_num,
-                dir_entry
-            ), file=self.outfile
+                inode_nr
+            ), file=self.outfile, end=''
         )
 
-    def UNALLOCATED_BLOCK(self, block_nr, ref_inode, entry):
+        # sort by dir_num (directory inode num) order
+        for dir_num, dir_entry in sorted(dir_ref_list, key=lambda ref: ref[0]):
+            print(file=self.outfile, end=' ')
+            print(
+                directory_ref.format(
+                    dir_num,
+                    dir_entry
+                ), file=self.outfile, end=''
+            )
+        print(file=self.outfile)
+
+    def UNALLOCATED_BLOCK(self, block_nr, inode_ref_list): #[ (ref_inode, entry), ... ]
         print(
             unallocated_block.format(
                 block_nr,
-                ref_inode,
-                entry
-            ), file=self.outfile
+            ), file=self.outfile, end=''
         )
+
+        # sort by inode number
+        for ref_inode, entry in sorted(inode_ref_list, key=lambda ref: ref[0]):
+            print(file=self.outfile, end=' ')
+            print(
+                inode_ref.format(
+                    ref_inode,
+                    entry
+                ), file=self.outfile, end=''
+            )
+        print(file=self.outfile)
+
 
     def INCORRECT_DIR_ENTRY(self, dir_inode, dir_name, dir_link, link_should_be):
         print(
@@ -70,19 +90,20 @@ class warning:
             ), file=self.outfile
         )
 
-    def MULTIPLY_REFERENCED_BLOCK(self, block_nr, inode_ref_list):
+    def DUPLICATELY_ALLOCATED_BLOCK(self, block_nr, inode_ref_list):
         print(
-            multiply_ref_blk.format(
+            dup_alloc_block.format(
                 block_nr
             ), file=self.outfile, end=''
         )
 
-        for inode_nr, entry in inode_ref_list:
+        # sort by inode_nr
+        for ref_inode, entry in sorted(inode_ref_list, key=lambda ref: ref[0]):
+            print(file=self.outfile, end=' ')
             print(
                 inode_ref.format(
-                    inode_nr,
+                    ref_inode,
                     entry
                 ), file=self.outfile, end=''
             )
-
         print(file=self.outfile)
