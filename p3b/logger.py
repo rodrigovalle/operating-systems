@@ -9,7 +9,7 @@ multiply_ref_blk = "MULTIPLY REFERENCED BLOCK < {} > BY "
 inode_ref = "INODE < {} > ENTRY < {} >"
 
 
-class warnings:
+class warning:
     def __init__(self, outfile):
         self.outfile = open(outfile, mode='w')
         
