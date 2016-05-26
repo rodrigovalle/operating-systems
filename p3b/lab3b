@@ -56,6 +56,17 @@ def main():
 
 
     # populate blockAllocated and inodeAllocated
+    """
+    inode.csv contains the field: number of blocks.  We need to make it so the
+    code iterates through only that number of blocks that are actually
+    allocated (given to us by this number of blocks field).  If any of these
+    allocated blocks have a value of 0 then we should output the error like so:
+
+    if blocknum == 0 or blocknum > maxblocknum
+        INVALID_BLOCK_ERROR
+    else 
+        put the block corresponding to blocknum into blockAllocated dictionary
+    """
     for inode in inode_csv:
         inode_nr = inode['inode_number']
         inodeAllocated[inode_nr] = obj.inode(inode_nr)
