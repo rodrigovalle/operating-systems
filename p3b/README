@@ -11,6 +11,9 @@ alternatively, use:
 
 python3 lab3b directory // where directory is the directory containing the 6 csv
                         // files
+or even this:
+
+make run
 
 Description of included files:
 
