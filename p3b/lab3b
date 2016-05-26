@@ -71,27 +71,32 @@ def main():
             for lvl, ptr in enumerate(inode['block_pointers'][12:], start=1):
                 for indirect in indirect_csv:
     
-    # directory csv parsing
+    #directory csv parsing 
     for direct in directory_csv:
         child_inode_num = direct['entry_inode']
         parent_inode_num = direct['parent_inode_number']
         entry_num = direct['entry_number']
-
+        
+        # Populate the directory table
         if child_inode_num != parent_inode_num or direct['name'] == '.':
             directoryTable[child_inode_num]] = parent_inode_num
-
+        
+        # if our child is properly allocated, then add the parent inode to 
+        # its referenced by list
         if child_inode_num in inodeAllocated:
-            directoryTable[child_inode_num].getvalue().add_reference(parent_inode_num,
+            inodeAllocated[child_inode_num].getvalue().add_reference(parent_inode_num,
                     entry_num)
         else:
-            raise UnallocatedInodeException
+            writer.UNALLOCATED_INODE(child_inode_num,)
 
+        # These are checks for the "." and ".." files
         if entry_num == 0 and child_inode_num != parent_inode_num:
             raise IncorrectEntryException
         else if (entry_num == 1 and child_inode_num !=
                 directoryTable[parent_inode_num])
             raise IncorrectEntryException
     # end directory csv parsing
+
 
     # assorted checking
     for i in inodeAllocated: # check to see if an inode is allocated mult times
