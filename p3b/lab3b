@@ -156,12 +156,13 @@ def main():
                 linkCnt
             )
 
-# ???
-#    for i in inodeFreeList:
-#        if i.inode_number in inode ^ :
-#            warn.UNALLOCATED_INODE_ERROR(
-#                i.inode_number,
-#            )
+     
+    for inode_nr in inodeFreeList:
+        if inode_nr in inodeAllocated:
+            warn.UNALLOCATED_INODE(
+                inode_nr,
+                inodeAllocated[i.inode_nr].referenced_by
+            )
 
     for n in range(11, max_inode_nr):
         if n not in inodeFreeList and n not in inodeAllocated:
@@ -178,11 +179,11 @@ def main():
                 reflist
             )
 
-    for b in blockAllocated.values():
-        if b.block_number in blockFreeList:
+    for block_nr in blockFreeList:
+        if block_nr in blockAllocated:
             warn.UNALLOCATED_BLOCK(
-                b.block_number,
-                b.referenced_by
+                block_nr,
+                blockAllocated[block_nr].referenced_by
             )
 
 def follow_indirect(blk, lvl):
