@@ -16,14 +16,22 @@ if len(sys.argv) == 2:
 pp = pprint.PrettyPrinter(indent=4)
 r = csv_reader(cur_dir)
 warn = warning('lab3b_check.txt')
+block_counter = 0
 
+super_csv = r.entry_list('super.csv')
+inodes_per_group = super_csv[0]['inodes_per_group']
+ptrs_per_indirect = super_csv[0]['block_size'] // 4
+max_inode_nr = super_csv[0]['total_inodes']
+max_block_nr = super_csv[0]['total_blocks'] - 1  # account for index offset
+
+group_csv = r.entry_list('group.csv')
+bitmap_csv = r.entry_list('bitmap.csv')
+inode_csv = r.entry_list('inode.csv')
+directory_csv = r.entry_list('directory.csv')
+indirect_csv = r.entry_list('indirect.csv')
 
 def main():
-    super_csv = r.entry_list('super.csv')
-    group_csv = r.entry_list('group.csv')
-    bitmap_csv = r.entry_list('bitmap.csv')
-    inode_csv = r.entry_list('inode.csv')
-    directory_csv = r.entry_list('directory.csv')
+    global block_counter
 
     # build a model of the file system, which we'll check for inconsistencies
     blockBitmapBlocks = []
@@ -34,12 +42,9 @@ def main():
 
     inodeAllocated = {} # <key=inode_num, value=Inode class>
     blockAllocated = {} # <key=block_num, value=Block class>
+
     directoryTable = {}
-
-    inodes_per_group = super_csv[0]['inodes_per_group']
-    max_inode_nr = super_csv[0]['total_inodes']
-    max_block_nr = super_csv[0]['total_blocks'] - 1  # account for index offset
-
+    indirectTable  = {}
 
     # populate blockBitmapBlocks and inodeBitmapBlocks
     for group in group_csv:
@@ -55,6 +60,10 @@ def main():
         elif entry['bitmap_block'] in inodeBitmapBlocks:  # found free inode
             inodeFreeList.append(n)
 
+    # populate indirectTable
+    for i_entry in indirect_csv:
+        i_tup = (i_entry['containing_block'], i_entry['entry_number'])
+        indirectTable[i_tup] = i_entry['block_pointer']
 
     # populate blockAllocated and inodeAllocated
     """
@@ -72,26 +81,44 @@ def main():
         inode_nr = inode['inode_number']
         inodeAllocated[inode_nr] = obj.inode(inode_nr, inode['ref_count'])
 
-        for i, ptr in enumerate(inode['block_pointers']):
-            if ptr == 0:  # should we keep traversing the array or stop?
-                continue
+        alloc_blocks = inode['allocated_blocks']
+        block_counter = 0
 
-            # direct blocks
-            if i < 12:
-                if ptr not in blockAllocated:
-                    blockAllocated[ptr] = obj.block(ptr)
-                blockAllocated[ptr].add_reference((inode_nr, i))
+        direct_blocks = inode['block_pointers'][:12]
+        single_indirect = inode['block_pointers'][12]
+        double_indirect = inode['block_pointers'][13]
+        triple_indirect = inode['block_pointers'][14]
 
-            # indirect blocks
-            elif i >= 12:
-                lvl = i - 11  # 1 for single indirect, 2 for double, etc
+        try:
+            for i, ptr in enumerate(direct_blocks):
+                if block_counter == alloc_blocks:
+                    raise Exception
 
-                for sub_block in follow_indirect(ptr, lvl):
-                    sub_blk_ptr, entrynum = sub_block
+                if ptr == 0 or ptr > max_block_nr:
+                    warn.INVALID_BLOCK(ptr, inode_nr, -1, i)
+                else:
+                    # add to blockAllocated
+                    if ptr not in blockAllocated:
+                        blockAllocated[ptr] = obj.block(ptr)
+                    blockAllocated[ptr].add_reference((inode_nr, i))
 
-                    if sub_blk_ptr not in blockAllocated:
-                        blockAllocated[sub_blk_ptr] = obj.block(sub_blk_ptr)
-                    blockAllocated[sub_blk_ptr].add_reference(sub_block)
+                block_counter += 1
+
+            if block_counter == alloc_blocks:
+                raise Exception
+
+            print(block_counter)
+            traverse_single_indirect(single_indirect, inode_nr, alloc_blocks)
+            print(block_counter)
+            traverse_double_indirect(double_indirect, inode_nr, alloc_blocks)
+            print(block_counter)
+            traverse_triple_indirect(triple_indirect, inode_nr, alloc_blocks)
+            print(block_counter)
+
+        except Exception:
+            print(block_counter)
+            continue
+
 
     referencedInodes = {}
     # populate inode reference lists in inodeAllocated
@@ -117,8 +144,7 @@ def main():
         referencedInodes[child_inode_num].add_reference(
             (parent_inode_num, entry_num)
         )
-
-        # checks for the "." and ".." entries
+# checks for the "." and ".." entries
         if entry_num == 0 and child_inode_num != parent_inode_num:
             warn.INCORRECT_DIR_ENTRY(
                 parent_inode_num,
@@ -186,19 +212,107 @@ def main():
                 blockAllocated[block_nr].referenced_by
             )
 
-def follow_indirect(blk, lvl):
-    indirect_csv = r.entry_list('indirect.csv')
-    allocated_blocks = []
 
-    for entry in indirect_csv:
-        if blk == entry['containing_block']:
-            sub_block = (entry['block_pointer'], entry['entry_number'])
-            allocated_blocks.append(sub_block)
-            if lvl == 1:
-                allocated_blocks += follow_indirect(sub_block, lvl - 1)
+def traverse_single_indirect(single_indirect, inode_nr, alloc_blocks):
+    global block_counter
 
-    return allocated_blocks
+    if single_indirect == 0 or single_indirect > max_block_nr:
+        warn.INVALID_BLOCK(single_indirect, inode_nr, -1, 12)
+    else:
+        if single_indirect not in blockAllocated:
+            blockAllocated[single_indirect] = obj.block(single_indirect)
+        blockAllocated[single_indirect].add_reference((inode_nr, 12))
 
+    block_counter += 1 # add the singly indirect block
+
+    for ientry in enumerate(get_indirect_entries(single_indirect)):
+        if block_counter == alloc_blocks:
+            raise Exception
+
+        ptr = ientry['block_pointer']
+        if ptr == 0 or ptr > max_block_nr:
+            warn.INVALID_BLOCK(ptr, inode_nr, single_indirect, ientry['entry_number'])
+        else:
+            if ptr not in blockAllocated:
+                blockAllocated[ptr] = obj.block(ptr)
+            blockAllocated[ptr].add_reference((inode_nr, ientry['entry_number']))
+
+        block_counter += 1
+
+    if block_counter == alloc_blocks:
+        raise Exception
+
+def traverse_double_indirect(double_indirect, inode_nr, alloc_blocks):
+    global block_counter
+
+    if double_indirect == 0 or double_indirect > max_block_nr:
+        warn.INVALID_BLOCK(double_indirect, inode_nr, -1, 13)
+    else:
+        if double_indirect not in blockAllocated:
+            blockAllocated[double_indirect] = obj.block(double_indirect)
+        blockAllocated[double_indirect].add_reference((inode_nr, 13))
+
+    block_counter += 1 # add the doubly indirect block
+
+    for ientry in enumerate(get_indirect_entries(double_indirect)):
+        if block_counter == alloc_blocks:
+            raise Exception
+
+        ptr = ientry['block_pointer']
+        if ptr == 0 or ptr > max_block_nr:
+            warn.INVALID_BLOCK(ptr, inode_nr, double_indirect, ientry['entry_number'])
+        else:
+            if ptr not in blockAllocated:
+                blockAllocated[ptr] = obj.block(ptr)
+            blockAllocated[ptr].add_reference((inode_nr, ientry['entry_number']))
+            traverse_single_indirect(ptr, inode_nr, alloc_blocks)
+
+        block_counter += 1
+
+    if block_counter == alloc_blocks:
+        raise Exception
+
+def traverse_triple_indirect(triple_indirect, inode_nr, alloc_blocks):
+    global block_counter
+
+    if triple_indirect == 0 or triple_indirect > max_block_nr:
+        warn.INVALID_BLOCK(triple_indirect, inode_nr, -1, 14)
+    else:
+        if triple_indirect not in blockAllocated:
+            blockAllocated[triple_indirect] = obj.block(triple_indirect)
+        blockAllocated[triple_indirect].add_reference((inode_nr, 14))
+
+    block_counter += 1 # add the doubly indirect block
+
+    for ientry in enumerate(get_indirect_entries(triple_indirect)):
+        if block_counter == alloc_blocks:
+            raise Exception
+
+        ptr = ientry['block_pointer']
+        if ptr == 0 or ptr > max_block_nr:
+            warn.INVALID_BLOCK(ptr, inode_nr, triple_indirect, ientry['entry_number'])
+        else:
+            if ptr not in blockAllocated:
+                blockAllocated[ptr] = obj.block(ptr)
+            blockAllocated[ptr].add_reference((inode_nr, ientry['entry_number']))
+            traverse_double_indirect(ptr, inode_nr, alloc_blocks)
+
+        block_counter += 1
+
+    if block_counter == alloc_blocks:
+        raise Exception
+
+
+
+def get_indirect_entries(blk):
+    entries = []
+
+    for i in range(ptrs_per_indirect):
+        for ientry in indirect_csv:
+            if ientry['entry_number'] == i and ientry['containing_block'] == blk:
+                entries.append(ientry)
+
+    return entries
 
 if __name__ == '__main__':
     main()

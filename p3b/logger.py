@@ -1,10 +1,14 @@
 unallocated_inode = "UNALLOCATED INODE < {} > REFERENCED BY"
 unallocated_block = "UNALLOCATED BLOCK < {} > REFERENCED BY"
+invalid_block = "INVALID BLOCK < {} > IN INODE < {} >"
 dup_alloc_block = "MULTIPLY REFERENCED BLOCK < {} > BY"
 incorrect_entry = "INCORRECT ENTRY IN < {} > NAME < {} > LINK TO < {} > SHOULD BE < {} >"
 inode_linkcount = "LINKCOUNT < {} > IS < {} > SHOULD BE < {} >"
 missing_inode = "MISSING INODE < {} > SHOULD BE IN FREE LIST < {} >"
 block_linkcount = "LINKCOUNT < {} > SHOULD BE < {} >"
+
+invalid_indirect_block = "INDIRECT BLOCK < {} >"
+inode_block_entry = "ENTRY < {} >"
 
 inode_ref = "INODE < {} > ENTRY < {} >"
 directory_ref = "DIRECTORY < {} > ENTRY < {} >"
@@ -53,6 +57,27 @@ class warning:
             )
         print(file=self.outfile)
 
+    def INVALID_BLOCK(self, block_nr, inode_nr, indirect_block_nr, entry):
+        print(
+            invalid_block.format(
+                block_nr,
+                inode_nr
+            ), file=self.outfile, end=' '
+        )
+
+        if indirect_block_nr > 0:
+            print(
+                invalid_indirect_block.format(
+                    indirect_block_nr
+                ), file=self.outfile, end=' '
+            )
+
+        print(
+            incorrect_entry.format(
+                entry
+            ), file=self.outfile
+        )
+        
 
     def INCORRECT_DIR_ENTRY(self, dir_inode, dir_name, dir_link, link_should_be):
         print(
