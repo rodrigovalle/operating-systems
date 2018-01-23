@@ -1,0 +1,62 @@
+Malloc memory allocation:
+Have a large chunk of free memory and we want to divide up this memory as a
+program requests it.
+
+We keep a free list of this memory. Essentially, it's a linked list of the free
+chunks of memory. Initially, it's just one giant chunk of memory, but when a
+program requests n bytes of memory, we allocate an n-byte chunk of memory and
+give it to the program to use. The free list is updated accordingly.
+
+The free list can either contain every chunk of memory, or only the free chunks.
+Either way, each chunk has a pointer to the next chunk, and we'd have to look
+through the list for a free chunk when we have to give it to a program. How can
+we make this process of finding a free chunk of memory efficient?
+
+Free List Searching Algorithms
+Best Fit:
+look for the smallest size greater than or equal to the requested size
+- (pro) we could find a perfect fit in the list
+- (con) makes a lot of really tiny unusable fragments, pretty bad when it comes
+  to fragmentation
+- (con) takes forever to search the entire list
+
+Worst Fit:
+carve the largest possible free chunk of memory
+- (pro) reduces the number of tiny fragments (more like actively fights tiny
+  fragments, they'll probably show up after a while anyway)
+- (con) performance is still just as bad as best fit
+
+First Fit:
+starting from the beginning of the list, just carve up the first free chunk of
+memory that suits your needs
+- (pro) faster than the previous two algorithms
+- (con) fragmentation starts at the top of the free list and continues down,
+  making searches longer over time until we're essentially running best fit
+
+Next Fit:
+Remember the location of where we found the last free chunk, and start the
+search for the next chunk that fits from there:
+- (pro) consisitently fast
+- (pro) spreads out fragmentation
+
+Coalescing:
+really the only way we have to combat fragmentation
+if two free chunks are next to each other, join them together into one larger
+chunk
+
+We can even toy with the idea of having free lists of special commonly-requested
+sizes, waiting to be allocated. We don't know how big these pools should be
+however, so we might want to give the OS a clawback routine that will reduce
+the sizes of these free lists.
+
+slab allocator
+we can even have lists with uninitialized data structures already in them, and
+then request a data structure when we need it, and recycle them when we're done,
+so the slab allocator can give out that same data structure to some other
+process.
+
+Segments:
+base/bound registers:
+base register holds the physical location where memory starts
+bound register holds the highest valid address in that segment
+each memory reference is a calculated offset from the base register

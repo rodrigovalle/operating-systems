@@ -1,0 +1,40 @@
+open design principle
+- make your security system publicly available, it shouldn't depend on "security"
+  just because design details aren't publicly viewable.
+
+minimize secrets
+- complete mediation: every access should be explicitly authenticated
+- principle of least astonishment: mechanism for authorization should
+  intuitively show how security goals are mapped to the security mechanism
+- adopt sweeping simplifications: fewer security mechanisms that must be right
+  = better chance the user will do everything right = better security
+
+economy of mechanism
+- fewer mechanisms reduces complexity, easier to review security measures
+organize into
+- trusted and untrusted modules
+
+minimize common mechanism
+- avoid mechanisms that are common for many users
+- easier to satisfy one or two users than all users
+- end to end argument: application specific stuff should happen on the
+  communication ends, not inbetween
+
+fail-safe defaults
+- permission, not exclusion
+- users are dumb, make sane defaults
+
+least privilege principle
+- people get privileges only as/when they need them, and don't get privileges
+  they don't need
+
+
+security model:
+- complete mediation
+
+one way to request an action:
+- guard/reference monitor performs mediation
+guard
+- makes sure request is authentic
+- requester has priveleges to do the action
+- allows the action to happen

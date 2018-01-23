@@ -1,0 +1,45 @@
+Device utilization is important, we have to keep the device busy in order to
+mantain maximum throughput. Delays will disrupt realtime data flows.
+
+With a direct memory access module, we essentially have a piece of hardware in
+charge of copying data from main memory into the disk device driver's temprorary
+storage area, so the CPU doesn't waste time doing a bunch of useless copying on
+every read/write operation.
+
+The DMA controller generates an IO interrupt when it's done, which is handled in
+the typical two-level interrupt handler fashion.
+
+When issuing a read/write operation, we put our request into a queue, and ask
+the IO device to start copying our data over. Then, the interrupt handler is in
+charge of waking up the process that issued the read request and starting the
+next request from the queue.
+
+In genral, it's better to do big data transfers from disk, since it takes time
+for the head of the disk to seek to the proper location and to queue the
+request, etc. Once there, though, the transfer goes fairly quickly, so we want
+to avoid this overhead by issuing large transfers.
+
+How can we make sure that we always request large transfers? IO buffering.
+Instead of making tiny reads we read in an entire block/block sequence at a time
+from the disk, and keep it in a cache. That way we can quickly service requests
+that are already in cache.
+
+We also want to have lots of requests queued because that way we can optimize
+the way in which we gather information (eg, adjacent requests/reduce seek delay)
+
+Double buffered IO is useful when we don't want to wait for the IO
+device/application to finish processing a buffer before filling the buffer up
+again.
+
+Scatter/Gather IO:
+DMA transfers require all data to be in a continuous chunk in physical memory,
+but of course because memory is virtualized by the OS it's probably not in a
+continuous chunk. We can either:
+-copy everything into a continuous physical buffer and call DMA
+-split up the request and call DMA individually for each physical page
+-the MMU could already support this
+
+DMA is made for large IO requests, but it has some overhead. For small IO
+requests, we should use memory mapped IO, where the CPU manually copies data to
+the device's memory. We its less expensive this way, because we don't go to
+sleep, we don't service interrupts, we don't queue IO requests, etc.

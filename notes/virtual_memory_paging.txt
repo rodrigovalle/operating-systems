@@ -1,0 +1,51 @@
+Each process has its own virtual address space, basically, the process thinks
+that it has all the memory that can be pointed to by a pointer. ie processes on
+a 64 bit system have a larger address space than a 32 bit system.
+
+Obviously, not all of this memory exists, so to virtualize it we split it all up
+into fixed size chunks of memory.
+
+Segments will then consist of a continuous set of virtual pages, reducing memory
+fragmentation to, on average, just a half of a page (half of the last page)
+
+Now that's all fine and good, and now we can store the actual pages wherever we
+want, but we need a system for figuring out where a page is. We do this by
+splitting up the virtual address into a page numer and an offset.
+
+Suppose a virtual address is n bits, and we use the first k bits to signify a
+page number. Then the remaining n-k bits become an offset. The virtual page
+number then goes through a mapping, which gives a physical page number in
+physical memory, and combined with the offset we get the physical address of the
+reference.
+
+These page lookups are performed frequently and can be expensive, so there's a
+hardware managed cache called a TLB which is in charge of storing commonly used
+page mappings. If the page mapping is not in the TLB, then it calls the page
+fault handler, which is of course a more expensive operation.
+
+The page fault handler performs a page walk, looking in the page table for the
+location of that page, but only if the page is a valid reference. A bad (eg null
+pointer reference) means that the page fault handler will kill the process that
+requested the invalid page. Once the page walk determines the mapping for a
+physical page, it updates the TLB and instructs the program to try the lookup
+again, which will result in a TLB hit.
+If the page is not in the page table, but is a valid reference, then the page
+fault handler must allocate a new page for the process.
+
+Problem: how do we know which pages to keep in the TLB cache?
+Optimally, we get rid of the page which we won't need for the longest amount of
+time. This would be great but unfortunately this information is hard to know.
+We can estimate, though, based on which page has had the least number of
+lookups. We get rid of the page because we assume that that page hasn't been
+used recently and probably won't be used again in the future.
+
+Unfortunately again, this is pretty hard to implement. We have to do a search of
+every page in the cache to figure out which one is the oldest, and we have to
+keep track of which one is the newest, etc.
+
+So we approximate again, we use clock algorithms, in particular, WS-Clock.
+We organize the pages belonging to a particular process in a circular list, and
+we keep track of the process run time. When a process references a page, we keep
+track of when it referenced that page by assigning it its CPU time if the
+reference bit is set to 1. The reference bit is set each time the page is
+referenced, and unset at each clock tick.

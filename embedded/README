@@ -1,0 +1,152 @@
+Rodrigo Valle
+104 494 120
+
+
+Using the PDF version of the spec (with Theano's naming convention as posted on
+Piazza).
+
+
+================================================================================
+PLEASE PLEASE PLEASE READ
+================================================================================
+INFORMATION ABOUT IMAGE NAMING:
+Some steps required two screen shots, I've labeled these parts (a) and (b).
+In general:
+    (a) images show the response of the client to the command given
+    (b) images show the output of get_tshark, as requested in the PDF spec
+
+Theano also said that no Makefile was required for this project. I also included
+the log file I generated as requested by the spec.
+================================================================================
+
+
+================================================================================
+INVESTIGATING THE EXISTING IMPLEMENTATION
+================================================================================
+
+Lab4-SecA-Q3
+--------------------------------------------------------------------------------
+  The client is sending plaintext messages containing the patient's
+  identification information (ip address) and current heartrate. At this point,
+  anyone can be on the network listening in on the device's communication with
+  the server and see the patient's current heart rate. This is by no means
+  ideal because it's expected that this information remain private.
+
+Lab4-SecA-Q4
+--------------------------------------------------------------------------------
+  The packet sniffer is listening in on the messages being set from the client
+  to the server, and from the server back to the client (you can see that the
+  client first sends a heart rate report to the server, and then the server
+  echoes back the information that it received). The content of the packets is
+  decoded by the packet sniffer on the right using the ASCII character encoding
+  -- anyone with such a packet sniffer can easily see the content of each
+  packet being sent, posing a security issue.
+
+  The packet sniffer also gives us details like which IP and port the packet
+  originated from and where the packet was sent.
+
+Lab4-SecA-Q5
+--------------------------------------------------------------------------------
+  Executing the `./set_rate 1` command significantly speeds up the rate at
+  which the client polls for heartrate information and sends updates to the
+  server. Upon closer inspection, `./set_rate` does not communicate with the
+  client directly. Instead, it sends a message containing the new rate to the
+  server first, which then negotiates a rate change with the client. Once the
+  client receives the new rate, it uses the new rate as the amount of time for
+  which to sleep between sending heartrate updates to the server.
+
+  By running the packet sniffer, we can see this exchange happen clearly.
+
+Lab4-SecA-Q6
+--------------------------------------------------------------------------------
+  Executing `./start_attack` sets the client's rate to 15, a value that is
+  disallowed by the `set_rate` command and makes the heart rate update interval
+  15 seconds long. Essentially, the `start_attack` command mimics a packet sent
+  from `set_rate`, and since the server does no authentication for the source
+  of a packet specifying a new rate, anyone could send a plaintext message to
+  the server and modify the client's update interval without our permission.
+
+
+================================================================================
+BUILDING A MORE SECURE IMPLEMENTATION
+================================================================================
+
+Lab4-SecB-Q4
+--------------------------------------------------------------------------------
+  On first glance, the first ten lines of output are similar to the udp_client's
+  output. However, we note that the tls_client prints out the line "Server
+  Certificate Descriptor: ..." that specifies information about the type of
+  encryption that the tls client is doing when communicating with the server.
+  This encrypted approach using a TLS session should prove itself more secure
+  and less susceptible to eavesdropping that a plaintext UDP transmission.
+
+Lab4-SecB-Q5
+--------------------------------------------------------------------------------
+  Now we can see the actual packets being transmitted between the client and
+  server. It's an encrypted communication, so the plaintext ASCII representation
+  that the packet sniffer does is useless to us. There's no way for an
+  eavesdropper to know what information is being sent over the network without
+  the session key, which is kept secret to the client and server.
+
+  We also note the occassional ACK packet, which is one of the endpoints
+  acknowledging the successful transmission of a packet, and we note the packet
+  sniffers "[Malformed Packet]" warnings. These warnings are likely due to the
+  encryption used -- upon being decrypted, these packets a converted into well
+  formed plaintext packets which can be processed by an endpoint.
+
+Lab4-SecB-Q6
+--------------------------------------------------------------------------------
+  After executing set_rate, we see the client recieve a message from the server
+  informing it that the update rate has changed. The client will modify its
+  behavior accordingly, and all will continue working as expected. The packet
+  sniffer shows that set_rate sent an encrypted message to the server, which
+  verified that the packet came from a trusted source and set the client's rate
+  accordingly.
+
+Lab4-SecB-Q7
+--------------------------------------------------------------------------------
+  After executing start_attack, the client does not change its behavior at all.
+  From the packet sniffer output, we see that the client recieved an unencrypted
+  message from start_attack requesting that the update rate be changed to 15,
+  but the server (correctly) chose to ignore this message and did not request
+  the client to change its rate. In this case, the message was not encrypted
+  with the session key because an attacker, presumably, wouldn't have the
+  session key. Thus, the server detected this an chose to ignore the
+  unauthorized rate change request.
+
+  The server had no need to inform the client that anything had happened in this
+  case, but if the client recieves an unecrypted packet, it too should regard
+  it as having come from an unauthorized third party and ignore it.
+
+
+================================================================================
+BUILDING A MORE SECURE IMPLEMENTATION WITH CAPABILITY FOR RESOLVING ERROR
+BEHAVIOR
+================================================================================
+
+NOTE: Both my tls client implementation and the official tls client
+implementation recieve two messages from the tls server when using set_rate.
+This is not a bug in my refactored code.
+
+Lab4-SecC-Q3
+--------------------------------------------------------------------------------
+  When issuing the command ./set_rate 1 to my modified tls_client, the client
+  immediately recieves and outputs a message from the server notifying it of
+  the rate change. Previously the client would always print output in the order 
+      sent heart rate to server
+      received messages from server
+      sent heart rate to server
+      received messages from server
+      ...
+  even if a message was recieved from the server before the next heart rate was
+  sent, it would only be output after that heart rate was sent (in other words,
+  completely out of chronological order).
+
+Lab4-SecC-Q4
+--------------------------------------------------------------------------------
+  Rather than waiting for the next read/write cycle like it originally did, the
+  tls_client now has the ability to recieve messages and transmit messages to
+  and from the server in any order whatsoever. So when the server transmits
+  surprise messages, like it does when the rate changes, the client can respond
+  accordingly and in a timely manner.
+

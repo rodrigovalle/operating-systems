@@ -1,0 +1,63 @@
+CPU Scheduling:
+Proposed Metrics:
+- time to completion (mean)
+- throughput
+- response time (mean)
+- fairness
+
+Three (basic) scheduled states:
+- running
+- blocked
+- ready
+
+Scheduling Algorithms:
+First in First Out (FIFO)
+- (pro) seems fair
+- (pro) simple
+- (con) response times will fluctuate depending on load
+- (con) long tasks will slow the response time of those following
+
+Shortest Job First (SJF)
+runs the shortest job on the ready queue whenever it has to schedule the next
+process
+- (pro) expected run time is known
+- (pro) will optimally yield the fastest response time (on average)
+- (pro) non preemptive, no context switching necessary
+- (con) not fair
+- (con) unbounded wait time: if there is always a shorter job to run, a longer
+  job will never be run
+- fix unbounded wait by:
+    - giving credit for time spent waiting (longer waiting jobs prioritized
+      higher)
+    - limit queue lengths
+
+Preemptive Scheduling
+now processes can interrupt each other (don't have to rely on the program to
+yield)
+- (pro) enables fairer scheduling
+- (con) context switching
+- (con) potential resource sharing (read: race condition) problems
+
+Round Robin Scheduling (RR)
+Just go in order running each process in a queue for some amount of time (called
+a time slice). Time slice is often the same for all processes, but can be
+weighted too.
+- (pro) so fair it's ridiculous
+- (pro) you can reliably calculate the response time
+- (pro) the response time is fairly good for short time-slice/queue
+- (con) contex-switching overhead
+- (con) longer running processes will take even longer
+
+Adaptive Scheduling
+Multi-Level Feedback Queue
+Create multiple levels of queues, each with a different priority. Each process
+in each queue inherits the priority level of the queue that its in. New
+processes are placed in the highest level queue, and queues are run by the
+scheduler in Round Robin. As processes run, the scheduler keeps track of how
+long they've been running. After a processes has exceeded the allotted run time
+for the queue that it's in, it gets bumped down to a lower priority queue. The
+lower priority queue has a longer total run time limit, but a lower priority.
+After a certain amount of time, every process in the system will be bumped back
+up to the highest priority queue to ensure fairness for all processes. If a
+process blocks, the next highest priority ready process is run, but time spent
+blocked does not count towards a processes run time.

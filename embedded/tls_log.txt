@@ -1,0 +1,56 @@
+My ip addr is: 131.179.58.242
+Reading input file...
+Connecting to: 164.67.194.240:5000
+Client-Server connection complete with AES256-SHA encryption
+Current settings: rate: 3, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 72.72' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 72.72' from server.
+
+Current settings: rate: 3, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 69.16' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 69.16' from server.
+
+Current settings: rate: 3, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 72.26' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 72.26' from server.
+
+Current settings: rate: 3, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 72.39' to server...
+New rate 1 received from server.
+Received message 'Heart rate of patient 131.179.58.242 is 72.39 new_rate: 1' from server.
+
+New rate 1 received from server.
+Received message 'Heart rate of patient 131.179.58.242 is 72.39 new_rate: 1' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 73.29' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 73.29' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 67.58' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 67.58' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 68.68' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 68.68' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 72.15' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 72.15' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 68.22' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 68.22' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 70.43' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 70.43' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 69.82' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 69.82' from server.
+
+Current settings: rate: 1, range: 4
+Sending message 'Heart rate of patient 131.179.58.242 is 71.03' to server...
+Received message 'Heart rate of patient 131.179.58.242 is 71.03' from server.
+

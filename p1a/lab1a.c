@@ -131,8 +131,8 @@ spawn_shell(int keybd_out[2], int sh_out[2])
 		dup2(sh_out[1], STDERR_FILENO);
 
 		// clean up the pipe file descriptors
-		close(keybd_out[0]);
-		close(sh_out[1]);
+		//close(keybd_out[0]);
+		//close(sh_out[1]);
 
 		if (execl("/bin/bash", "/bin/bash", NULL) < 0)
 			perror("shell: exec");
